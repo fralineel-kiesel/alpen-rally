@@ -133,6 +133,7 @@ const Scenery = {
     this.hangKollision();
     this.zufallsReihen();
     this.hangBewuchs();
+    this.flankenBoden();
   },
 
   // --- Gelände: Hang und Abhang ---
@@ -246,6 +247,17 @@ const Scenery = {
       // unter der Strassenhöhe bleibt.
       s.talBaum = [0, 1].map(() => (zufall() < CONFIG.TAL_BAUM_DICHTE ? 35 + zufall() * 150 : 0));
     }
+    // Höhe des Hangs pro Stück (hang_hoehe in track.js, weich übergeblendet),
+    // Umgebung (für die Farbe der Flanke) und grüne Flecken auf der Flanke (fels).
+    // Eigener Zufall, damit Tal und Fels genau gleich bleiben wie vorher.
+    const zufallFlanke = this.zufallsGenerator(CONFIG.SZENERIE_SEED + 4);
+    for (const s of Road.stuecke) {
+      s.hangFaktor = this.hangFaktor(s);
+      s.hangUmgebung = this.umgebungVon(Road.abschnitte[s.abschnittNr]);
+      // Fleck: [von, bis] als Anteil der oberen Flanke (P5 bis P6), sonst null
+      const von = 0.1 + zufallFlanke() * 0.6;
+      s.flankeFleck = zufallFlanke() < CONFIG.HANG_FLANKE_FLECKEN ? [von, von + 0.12 + zufallFlanke() * 0.15] : null;
+    }
     // Querschnitt des Hangs für jedes Stück und jede Seite ausrechnen
     for (const s of Road.stuecke) {
       s.hangU = [new Float32Array(this.hangPunkte), new Float32Array(this.hangPunkte)];
@@ -293,13 +305,35 @@ const Scenery = {
     return liste.sort((a, b) => CONFIG.HANG_SCHICHTEN[a].von - CONFIG.HANG_SCHICHTEN[b].von);
   },
 
+  // Faktor hang_hoehe für Stück s. Nahe an einer Abschnittsgrenze wird weich
+  // zwischen den Werten der beiden Abschnitte gemischt (wie Kurven in road.js),
+  // über HANG_HOEHE_UEBERGANG Meter, je zur Hälfte vor und nach der Grenze.
+  hangFaktor(s) {
+    const liste = Road.abschnitte;
+    const n = liste.length;
+    const nr = s.abschnittNr;
+    const a = liste[nr];
+    const vor = liste[(nr - 1 + n) % n];
+    const nach = liste[(nr + 1) % n];
+    const o = (s.index - a.erstesStueck + 0.5) * CONFIG.STUECK_LAENGE; // Mitte des Stücks ab Abschnittsbeginn
+    const halb = CONFIG.HANG_HOEHE_UEBERGANG / 2;
+    const hVor = Math.min(halb, a.laenge / 2, vor.laenge / 2);
+    const hNach = Math.min(halb, a.laenge / 2, nach.laenge / 2);
+    if (hVor > 0 && o < hVor) return Road.weich(vor.hangHoehe, a.hangHoehe, (o + hVor) / (2 * hVor));
+    if (hNach > 0 && o > a.laenge - hNach) return Road.weich(a.hangHoehe, nach.hangHoehe, (o - (a.laenge - hNach)) / (2 * hNach));
+    return a.hangHoehe;
+  },
+
   // Punkte des Querschnitts für Stück s, Seite nr ausrechnen (in s.hangU / s.hangH):
   // U = Meter ab Strassenmitte (ohne Vorzeichen), H = Meter über der Strasse.
   // Alle Punkte wachsen mit dem Hang (s.hang[nr]): bei 0 liegen sie alle am Bankettrand.
+  // Die Höhen werden zusätzlich mit hang_hoehe (s.hangFaktor) verkleinert, die Abstände nicht.
+  // Die Verlängerung bis zum Bildrand rechnet render.js dazu (gleiche Höhe wie der letzte Punkt).
   hangQuerschnitt(s, nr) {
     const W = 2 * CONFIG.STRASSE_HALBE_BREITE; // eine Strassenbreite in Metern
     const rand = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE;
     const g = s.hang[nr];
+    const gh = g * s.hangFaktor; // Wachstum für die Höhen
     const U = s.hangU[nr];
     const H = s.hangH[nr];
     const profil = CONFIG.HANG_PROFIL;
@@ -309,17 +343,17 @@ const Scenery = {
     for (let k = 0; k < profil.length; k++) {
       const u = profil[k].seite * W;
       let h = profil[k].hoehe * W;
-      if (k === profil.length - 1) h *= s.hangKamm; // Kamm mit Rauschen
+      if (k >= CONFIG.HANG_GRAT) h *= s.hangKamm; // Grat und Rückseite mit Rauschen
       // Schichten liegen auf der geraden Linie zwischen vorigem und diesem Punkt
       for (const sch of this.schichtenImBand(k)) {
         for (const anteil of s.hangSchichten[sch]) {
           U[j] = rand + g * (vorU + (u - vorU) * anteil);
-          H[j] = g * (vorH + (h - vorH) * anteil);
+          H[j] = gh * (vorH + (h - vorH) * anteil);
           j++;
         }
       }
       U[j] = rand + g * u;
-      H[j] = g * h;
+      H[j] = gh * h;
       j++;
       vorU = u; vorH = h;
     }
@@ -371,14 +405,44 @@ const Scenery = {
   },
 
   // Wie weit reicht der Hang auf Stück i (und den Nachbarn) seitlich?
-  // Meter ab Strassenmitte bis zum Kamm, 0 = kein Hang.
+  // Meter ab Strassenmitte bis zum Kamm (P4, Ende der Böschung), 0 = kein Hang.
+  // (Dahinter beginnt die Flanke. Was dort steht, kommt auf die Flanke, siehe flankenBoden.)
   hangBreite(i, nr) {
+    const kamm = this.hangPunktNr[CONFIG.HANG_KAMM];
     let breite = 0;
     for (let j = i - 1; j <= i + 1; j++) {
       const s = Road.stueck(j);
-      if (s.hang[nr] > 0) breite = Math.max(breite, s.hangU[nr][this.hangPunkte - 1]);
+      if (s.hang[nr] > 0) breite = Math.max(breite, s.hangU[nr][kamm]);
     }
     return breite;
+  },
+
+  // Höhe der Hangfläche (Meter über der Strasse) auf Stück s, Seite nr, u Meter ab
+  // Strassenmitte. Zwischen den Punkten des Querschnitts gerade verbunden, hinter
+  // dem letzten Punkt waagrecht (Verlängerung bis zum Bildrand). Kein Hang = 0.
+  hangHoeheBei(s, nr, u) {
+    const U = s.hangU[nr], H = s.hangH[nr];
+    if (s.hang[nr] <= 0 || u <= U[0]) return 0;
+    for (let j = 1; j < U.length; j++) {
+      if (u > U[j]) continue;
+      const d = U[j] - U[j - 1];
+      return d > 1e-9 ? H[j - 1] + (H[j] - H[j - 1]) * (u - U[j - 1]) / d : H[j];
+    }
+    return H[U.length - 1];
+  },
+
+  // Normale Objekte auf der Hangseite stehen nie zwischen Bankett und Kamm (siehe
+  // gelaendeErlaubt). Was weiter draussen steht (hinter dem Kamm oder am schmalen
+  // Keilende), läge seit der Bergflanke mitten im Berg. Darum kommt der Fusspunkt
+  // auf die Hangfläche: Solche Bäume stehen jetzt auf der Flanke. Weil sie nur
+  // verschoben und nicht weggelassen werden, bleibt der Zufall für alles andere gleich.
+  flankenBoden() {
+    for (const s of Road.stuecke) {
+      for (const o of s.objekte) {
+        if (o.unsichtbar) continue;
+        o.boden = this.hangHoeheBei(s, o.seite < 0 ? 0 : 1, Math.abs(o.x));
+      }
+    }
   },
 
   // Darf auf Stück i auf dieser Seite ein Objekt stehen, das von "innen"
@@ -386,9 +450,9 @@ const Scenery = {
   // - Talseite: alles muss mindestens 1 m vor der Abbruchkante stehen
   //   (ganz offen bleibt also nur der Randstreifen, dort steht die Leitplanke).
   //   Hohe Bäume erst ab TAL_BAUMFREI Metern, auch beim Übergang.
-  // - Hangseite: Dort ist der Hang, also nichts auf Strassenhöhe zwischen
-  //   Bankett und Kamm (Bäume usw. stehen dort auf dem Hang, siehe hangBewuchs).
-  //   Nur wo der Hang am Keilende noch schmal ist, darf hinter dem Kamm etwas stehen.
+  // - Hangseite: Dort ist der Hang, also nichts zwischen Bankett und Kamm
+  //   (Bäume usw. stehen dort auf dem Hang, siehe hangBewuchs). Was hinter dem
+  //   Kamm steht, kommt auf die Flanke (flankenBoden).
   gelaendeErlaubt(i, seite, name, innen, aussen) {
     const s = Road.stueck(i);
     const nr = seite < 0 ? 0 : 1;

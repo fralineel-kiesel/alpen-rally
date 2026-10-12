@@ -49,6 +49,7 @@ const Road = {
         umgebung: a.umgebung || 'wiese', // Landschaft am Rand, siehe scenery.js
         dichte: a.dichte || 1,           // mehr (z. B. 1.5) oder weniger (0.5) Objekte als normal
         gelaende: a.gelaende || 'keins', // Hang / Abhang, siehe scenery.js
+        hangHoehe: this.hangHoeheLesen(a), // Faktor für die Höhe des Hangs (hang_hoehe in track.js)
       };
     });
 
@@ -116,6 +117,16 @@ const Road = {
       s.y -= rest * s.index / n;
       s.steigung -= rest / this.laenge;
     }
+  },
+
+  // Feld hang_hoehe eines Abschnitts aus track.js. Fehlt es, gilt 1 (volle Höhe).
+  // Ist es keine Zahl ab 0 (Tippfehler), auch 1, mit Warnung in der Konsole.
+  hangHoeheLesen(a) {
+    if (a.hang_hoehe === undefined) return 1;
+    if (typeof a.hang_hoehe === 'number' && a.hang_hoehe >= 0) return a.hang_hoehe;
+    console.warn('Alpen Rally: hang_hoehe "' + a.hang_hoehe + '" bei "' + a.name +
+      '" ist keine Zahl ab 0. Nehme 1.');
+    return 1;
   },
 
   // Wert (Kurve oder Steigung) an Stelle o im Abschnitt Nummer nr.
