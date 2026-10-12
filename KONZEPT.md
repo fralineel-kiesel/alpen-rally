@@ -19,6 +19,9 @@ Ein Retro-Pixel-Rallyspiel im Pseudo-3D-Stil (wie OutRun): Blick von hinten aufs
 - Retro-Pixel-Stil. Interne Auflösung klein (320x180), hochskaliert mit scharfen Pixeln.
 - Farbpalette: erdig und rau (Schotterbraun, Steingrau, Tannengrün), aber mit sattem grünem Gras und blauem Himmel.
 - Begrenzte Farbanzahl, keine weichen Verläufe ausser beim Himmel.
+- Ziel-Optik angelehnt an GBA-Rallyspiele wie V-Rally 3.
+- Das Auto wird später aus mehreren Blickwinkeln gezeichnet (Mitte, leicht links, stark links; für rechts gespiegelt), sodass man beim Lenken die Seite des Autos sieht.
+- Die Strasse hat bewusst keine Rennstrecken-Randsteine (rot-weiss), sondern ein erdiges Bankett.
 
 ## Autos (Fantasienamen, Arbeitsnamen)
 Inspiriert von Gruppe-B-Legenden, aber mit erfundenen Namen und eigenem Design. Keine echten Marken, Logos oder Originaldesigns.
