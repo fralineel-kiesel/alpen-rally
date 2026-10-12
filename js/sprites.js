@@ -65,10 +65,10 @@ const SPRITE_FARBEN = {
 //              'innen' = die strassenseitige Kante steht auf dem Platz, das Bild
 //              geht nach aussen (Leitplanke, Zaun: so laufen sie dem Rand entlang)
 //   spiegeln:  true = darf zufällig gespiegelt werden (mehr Abwechslung)
-//   baum:      true = hoher Baum. Bäume stehen nie zwischen Strasse und Felswand
-//              und nie nahe am Abhang (siehe scenery.js).
+//   baum:      true = hoher Baum. Bäume stehen nie nahe am Abhang (siehe scenery.js).
 //   unsichtbar: true = wird nicht als Bild gezeichnet, zählt aber beim
-//              Zusammenstoss (Leitplanke: wird als Band gezeichnet, Wand: als Felswand)
+//              Zusammenstoss (Leitplanke und Zaun: werden als Band gezeichnet,
+//              Hang: als Flächen)
 //   varianten: ein oder mehrere Pixelraster (zufällig ausgewählt)
 const SPRITE_DATEN = {
   fichte_gross: {
@@ -308,9 +308,9 @@ const SPRITE_DATEN = {
     ],
   },
 
-  // Felswand: nur für den Zusammenstoss (ein Eintrag pro 2 m). Gezeichnet
-  // wird die Wand als durchgehende Fläche in render.js.
-  wand: {
+  // Felsfuss des Hangs: nur für den Zusammenstoss (ein Eintrag pro 2 m).
+  // Gezeichnet wird der Hang als Flächen in render.js.
+  hang: {
     hoehe: 1, fest: true, kollision: 1.0, laenge: 2, anker: 'innen', spiegeln: false, unsichtbar: true,
     varianten: [['K']],
   },

@@ -23,13 +23,16 @@
 //   gelaende: Alpen-Gelände neben der Strasse. Überdeckt die Umgebung auf der
 //           jeweiligen Seite; die andere Seite folgt weiter der "umgebung".
 //           'keins'                  = kein besonderes Gelände (nur Umgebung)
-//           'wand_links_tal_rechts'  = links Felswand, rechts Abhang ins Tal
-//           'wand_rechts_tal_links'  = rechts Felswand, links Abhang ins Tal
+//           'wand_links_tal_rechts'  = links Hang, rechts Abhang ins Tal
+//           'wand_rechts_tal_links'  = rechts Hang, links Abhang ins Tal
 //           'tal_links'              = nur links Abhang ins Tal
 //           'tal_rechts'             = nur rechts Abhang ins Tal
-//           Auf der Talseite steht immer eine Leitplanke. Wand und Abhang
-//           wachsen an den Abschnittsgrenzen weich heraus (GELAENDE_UEBERGANG
-//           in config.js). Einstellungen zu Wand und Tal: ebenfalls config.js.
+//           "wand" heisst seit Meilenstein 3.6: ein Hang mit steilem Felsfuss
+//           unten und bewachsener Böschung oben (der Name ist geblieben).
+//           Auf der Talseite steht immer eine Leitplanke. Hang und Abhang
+//           wachsen an den Abschnittsgrenzen weich heraus, der Hang als Keil
+//           (HANG_UEBERGANG und GELAENDE_UEBERGANG in config.js).
+//           Einstellungen zu Hang und Tal: ebenfalls config.js.
 //
 // Tipps:
 // - Die Strecke ist ein Rundkurs: Nach dem letzten Abschnitt kommt wieder

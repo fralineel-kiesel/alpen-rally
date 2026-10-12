@@ -1,5 +1,5 @@
-// Zeichnen: Himmel, Wolken, Berge, Waldlinie, Tal, Strasse, Felswand,
-// Leitplanke, Objekte am Rand, Auto und Anzeigen (Drehzahl, Tempo).
+// Zeichnen: Himmel, Wolken, Berge, Waldlinie, Tal, Strasse, Hang,
+// Bänder (Leitplanke, Zaun), Objekte am Rand, Auto und Anzeigen (Drehzahl, Tempo).
 // Wir zeichnen fast alles mit fillRect auf ganze Pixel. Schräge Linien
 // würde der Browser sonst weichzeichnen, und das passt nicht zum Pixel-Look.
 //
@@ -9,8 +9,10 @@
 //     und Talboden, von fern nach nah
 //  3. Strasse mit Bankett und Gras, von nah nach fern (verdeckt alles
 //     Tiefere dahinter, z. B. hinter Kuppen)
-//  4. Pro Strassenstück von fern nach nah: Felswand, Objekte hinter der
-//     Leitplanke, Leitplanke mit Pfosten, übrige Objekte (Bäume, Schilder ...)
+//  4. Pro Strassenstück von fern nach nah: zuerst die Flächen des Hangs,
+//     dann alles, was auf diesem Stück steht, von aussen nach innen
+//     (Bäume auf dem Hang, Objekte hinter dem Band, Band mit Pfosten,
+//     übrige Objekte). So verdeckt jedes nähere Stück alles dahinter.
 //  5. Auto, Anzeigen, Debug
 
 // Berg-Silhouetten als Liste von Punkten [x im Bild, Höhe über dem Horizont].
@@ -113,6 +115,7 @@ const Render = {
   hangFarben: null,
   viereckX: [0, 0, 0, 0], // Hilfsspeicher für viereck()
   viereckY: [0, 0, 0, 0],
+  fleckPunkte: [0, 0, 0, 0, 0, 0, 0, 0], // Hilfsspeicher für hangFleck()
   talSichtbar: false, // ist in diesem Bild irgendwo ein Abhang offen?
   fernX: 0,           // Strassenmitte (x im Bild) ganz hinten, trennt Gras und Dunst am Horizont
   fernTal: [false, false], // ist beim hintersten sichtbaren Stück links / rechts ein Abhang?
@@ -132,7 +135,7 @@ const Render = {
   // Wolken: aktuelle x-Position jeder Wolke (treiben langsam nach rechts)
   wolkenX: [],
   // Alle Strassenstücke bis zur Sichtweite mit ihrer Lage im Bild (rechnet
-  // strasse() aus, nutzen danach Tal, Wand, Leitplanke und Objekte), und
+  // strasse() aus, nutzen danach Tal, Hang, Bänder und Objekte), und
   // die Kamera dazu. Die Einträge werden in jedem Bild wiederverwendet,
   // statt neu angelegt (weniger Aufräumarbeit für den Browser).
   sichtbar: [],
@@ -140,6 +143,13 @@ const Render = {
   kameraX: 0,
   kameraY: 0,
   objekteGezeichnet: 0, // für die Debug-Anzeige
+  // Querschnitt des Hangs im Bild: für jeden Stückanfang bis zur Sichtweite
+  // (ein Platz mehr für das ferne Ende des letzten Stücks) und jede Seite die
+  // Bildpunkte aller Querschnitt-Punkte. Zwei Nachbarstücke benutzen so genau
+  // dieselben Zahlen für ihre gemeinsame Kante: keine Spalten, keine Stufen.
+  hangX: [],
+  hangY: [],
+  hangSeite: [false, false], // ist in diesem Bild links / rechts irgendwo ein Hang?
   ebene: [],            // Hilfsliste für objekteVorbereiten (alles auf einem Stück)
 
   start(ctx) {
@@ -156,6 +166,10 @@ const Render = {
     this.dunst = this.dunstVorzeichnen();
     this.talFarben = this.talFarbenMischen(); // setzt auch hangFarben
     this.wolkenX = CONFIG.WOLKEN.map((w) => w.x);
+    for (let n = 0; n <= CONFIG.SICHTWEITE; n++) {
+      this.hangX.push([new Float32Array(Scenery.hangPunkte), new Float32Array(Scenery.hangPunkte)]);
+      this.hangY.push([new Float32Array(Scenery.hangPunkte), new Float32Array(Scenery.hangPunkte)]);
+    }
   },
 
   // Nadeln nachführen. "Glätten" heisst: Pro Zeitschritt ein Stück des
@@ -211,7 +225,7 @@ const Render = {
     this.berge(this.bergVorne, this.bergVersatzVorne);
     this.waldlinieZeichnen();
     this.strasse();
-    // Wand, Leitplanke und Objekte von weit nach nah zeichnen, damit nahe
+    // Hang, Bänder und Objekte von weit nach nah zeichnen, damit nahe
     // die fernen überdecken. Das Auto kommt dazwischen: alles hinter dem
     // Auto zuerst, dann das Auto, dann was noch näher an der Kamera ist.
     const liste = this.objekteVorbereiten();
@@ -350,7 +364,7 @@ const Render = {
       const nah = e.nah;
       const fern = e.fern;
 
-      // Für Wand, Leitplanke und Objekte merken: "clip" ist die oberste
+      // Für Hang, Bänder und Objekte merken: "clip" ist die oberste
       // Bildzeile, die nähere Stücke schon belegen. Alles von diesem Stück,
       // was tiefer liegt, ist hinter einer Kuppe versteckt.
       e.clip = maxY;
@@ -393,6 +407,8 @@ const Render = {
     const hoehenOptik = CONFIG.HOEHEN_OPTIK;
     const ersterIndex = Math.floor(kameraZ / L);
     this.talSichtbar = false;
+    this.hangSeite[0] = false;
+    this.hangSeite[1] = false;
     let hoechstesY = Infinity; // höchste Stelle der Strasse im Bild bisher
 
     // Kurven: Die Strassenmitte wandert mit jedem Stück weiter zur Seite.
@@ -422,6 +438,7 @@ const Render = {
 
       if (!this.sichtbar[n]) this.sichtbar[n] = this.neuerEintrag();
       const e = this.sichtbar[n];
+      e.n = n;
       e.stueck = stueck;
       e.abstand = abstandVorne;            // kann beim ersten Stück negativ sein
       e.nahZ = Math.max(abstandVorne, 0.1);
@@ -435,8 +452,9 @@ const Render = {
       // Gelände am nahen Ende (gehört zu diesem Stück) und am fernen Ende
       // (gehört zum nächsten Stück). So passen Nachbarn lückenlos aneinander.
       for (let nr = 0; nr < 2; nr++) {
-        e.wandNah[nr] = stueck.wand[nr];
-        e.wandFern[nr] = naechstes.wand[nr];
+        e.hangNah[nr] = stueck.hang[nr];
+        e.hangFern[nr] = naechstes.hang[nr];
+        if (e.hangNah[nr] > 0 || e.hangFern[nr] > 0) this.hangSeite[nr] = true;
         e.talNah[nr] = stueck.tal[nr];
         e.talFern[nr] = naechstes.tal[nr];
         // Unendlich weit weg geht beim Rechnen schief, darum "nur" 10 km
@@ -454,16 +472,43 @@ const Render = {
       }
     }
     this.anzahlSichtbar = CONFIG.SICHTWEITE;
+    this.hangProjizieren(CONFIG.SICHTWEITE);
     return CONFIG.SICHTWEITE;
+  },
+
+  // Querschnitt des Hangs für jeden Stückanfang ins Bild umrechnen (nur auf
+  // Seiten, wo in diesem Bild ein Hang ist). Platz n = nahes Ende von Stück n,
+  // der letzte Platz = fernes Ende des letzten Stücks.
+  hangProjizieren(anzahl) {
+    const B = CONFIG.BREITE;
+    for (let nr = 0; nr < 2; nr++) {
+      if (!this.hangSeite[nr]) continue;
+      const seite = nr === 0 ? -1 : 1;
+      for (let n = 0; n <= anzahl; n++) {
+        const ende = n === anzahl;
+        const e = this.sichtbar[ende ? n - 1 : n];
+        const stueck = ende ? Road.stueck(e.stueck.index + 1) : e.stueck;
+        const z = ende ? e.fernZ : e.nahZ;
+        const mitte = ende ? e.mitteFern : e.mitteNah;
+        const boden = ende ? e.bodenFern : e.bodenNah;
+        const m = Road.brennweite / z;
+        const U = stueck.hangU[nr], H = stueck.hangH[nr];
+        const X = this.hangX[n][nr], Y = this.hangY[n][nr];
+        for (let j = 0; j < U.length; j++) {
+          X[j] = B / 2 + (mitte + seite * U[j] - this.kameraX) * m;
+          Y[j] = this.horizont + (this.kameraY - boden - H[j]) * m;
+        }
+      }
+    }
   },
 
   neuerEintrag() {
     return {
-      stueck: null, abstand: 0, nahZ: 0, fernZ: 0, mitteNah: 0, mitteFern: 0,
+      n: 0, stueck: null, abstand: 0, nahZ: 0, fernZ: 0, mitteNah: 0, mitteFern: 0,
       bodenNah: 0, bodenFern: 0, clip: 0,
       nah: { x: 0, y: 0, massstab: 0 }, fern: { x: 0, y: 0, massstab: 0 },
       // [links, rechts]
-      wandNah: [0, 0], wandFern: [0, 0], talNah: [0, 0], talFern: [0, 0],
+      hangNah: [0, 0], hangFern: [0, 0], talNah: [0, 0], talFern: [0, 0],
       kanteNah: [0, 0], kanteFern: [0, 0],
     };
   },
@@ -489,9 +534,9 @@ const Render = {
 
   // Ein Strassenstück Zeile für Zeile zeichnen. Pro Zeile werden Mitte
   // und Massstab zwischen dem nahen und dem fernen Ende "gemischt".
-  // Neben dem Bankett: Gras, vor einer Felswand ein Geröllstreifen, und auf
-  // der Talseite hört das Gras an der Abbruchkante auf (dahinter sieht man
-  // das Tal, das schon vorher gezeichnet wurde).
+  // Neben dem Bankett: Gras, und auf der Talseite hört das Gras an der
+  // Abbruchkante auf (dahinter sieht man das Tal, das schon vorher gezeichnet
+  // wurde). Der Hang kommt später darüber (siehe hangZeichnen).
   stueckZeichnen(e, oben, unten) {
     const f = CONFIG.FARBEN;
     const stueck = e.stueck;
@@ -501,9 +546,6 @@ const Render = {
     const strasse = CONFIG.STRASSE_HALBE_BREITE;
     const bankett = strasse + CONFIG.BANKETT_BREITE;
     const linie = CONFIG.MITTELLINIE_BREITE / 2;
-    // Geröll vor der Felswand: wächst mit der Wand von 0 auf WAND_ABSTAND
-    const geroellL = bankett + CONFIG.WAND_ABSTAND * stueck.wand[0];
-    const geroellR = bankett + CONFIG.WAND_ABSTAND * stueck.wand[1];
     // Gibt es auf dieser Seite eine Abbruchkante (am nahen oder fernen Ende)?
     const talL = e.talNah[0] > 0 || e.talFern[0] > 0;
     const talR = e.talNah[1] > 0 || e.talFern[1] > 0;
@@ -540,8 +582,6 @@ const Render = {
       const erde = Math.max(1, 0.4 * m);
       if (kanteL) this.zeile(grasL, grasL + erde, y, f.TAL_KANTE);
       if (kanteR) this.zeile(grasR - erde, grasR, y, f.TAL_KANTE);
-      if (geroellL > bankett) this.zeile(links - geroellL * m, links, y, hell ? f.GEROELL_HELL : f.GEROELL_DUNKEL);
-      if (geroellR > bankett) this.zeile(rechts, rechts + geroellR * m, y, hell ? f.GEROELL_HELL : f.GEROELL_DUNKEL);
       // Bankett zuerst über die ganze Breite, dann den Asphalt darüber.
       // Übrig bleibt links und rechts ein schmaler Erdstreifen.
       this.zeile(links - bankett * m, rechts + bankett * m, y, hell ? f.BANKETT_HELL : f.BANKETT_DUNKEL);
@@ -596,7 +636,7 @@ const Render = {
   // sind. Ergebnis: Liste von nah nach fern (wird rückwärts gezeichnet).
   // Höchstens MAX_OBJEKTE Bilder, die nächsten zuerst: Fällt etwas weg,
   // dann ganz hinten, wo es kaum auffällt.
-  // Dazwischen stehen Einträge für Felswand und Bänder (Leitplanke, Zaun)
+  // Dazwischen stehen Einträge für Hang und Bänder (Leitplanke, Zaun)
   // des jeweiligen Stücks, damit auch sie richtig von fern nach nah gezeichnet werden.
   objekteVorbereiten() {
     const liste = [];
@@ -615,9 +655,10 @@ const Render = {
       if (s.abstand >= CONFIG.OBJEKT_MIN_ENTFERNUNG && bilder < CONFIG.MAX_OBJEKTE) {
         // Gleiche Perspektive wie die Strasse: massstab = Pixel pro Meter
         const massstab = Road.brennweite / s.abstand;
-        const bodenY = this.horizont + (this.kameraY - s.bodenNah) * massstab;
-        for (const o of st.objekte) {
-          if (o.unsichtbar) continue; // Bänder und Wand werden eigens gezeichnet
+        // Normale Objekte und die auf dem Hang (die stehen höher: o.boden)
+        for (let k = 0; k < 2 && bilder < CONFIG.MAX_OBJEKTE; k++) for (const o of (k === 0 ? st.objekte : st.hangObjekte)) {
+          if (o.unsichtbar) continue; // Bänder und Hang werden eigens gezeichnet
+          const bodenY = this.horizont + (this.kameraY - s.bodenNah - o.boden) * massstab;
           const hoehe = o.hoehe * massstab;
           if (hoehe < CONFIG.OBJEKT_MIN_PIXEL) continue; // winzig, weglassen
           const breite = o.breite * massstab;
@@ -648,10 +689,12 @@ const Render = {
       // Innen zuerst in die Liste: Rückwärts gezeichnet kommt dann aussen zuerst
       if (ebene.length > 1) ebene.sort((a, b) => a.tiefe - b.tiefe);
       for (const eintrag of ebene) liste.push(eintrag);
-      // Die Wand steht hinter allem auf diesem Stück: als Letztes in die
-      // Liste, also als Erstes gezeichnet
-      if (s.wandNah[0] > 0 || s.wandFern[0] > 0 || s.wandNah[1] > 0 || s.wandFern[1] > 0) {
-        liste.push({ typ: 'wand', s: s, abstand: s.abstand });
+      // Der Hang liegt hinter allem auf diesem Stück: als Letztes in die
+      // Liste, also als Erstes gezeichnet. (Auch wenn der Hang erst ein paar
+      // Stücke weiter beginnt: In der Ferne zeichnet ein Stück den Hang für
+      // seinen ganzen Farbstreifen, siehe hangZeichnen.)
+      if (this.hangInDerNaehe(st.index)) {
+        liste.push({ typ: 'hang', s: s, abstand: s.abstand });
       }
     }
     this.objekteGezeichnet = bilder;
@@ -664,8 +707,8 @@ const Render = {
     for (let i = liste.length - 1; i >= 0; i--) {
       const e = liste[i];
       if ((e.abstand >= Road.autoAbstand) !== hinterAuto) continue;
-      if (e.typ === 'wand') {
-        this.wandZeichnen(e.s);
+      if (e.typ === 'hang') {
+        this.hangZeichnen(e.s);
         continue;
       }
       if (e.typ === 'band') {
@@ -681,116 +724,158 @@ const Render = {
     }
   },
 
-  // --- Felswand ---
-  // Wie die Strasse: pro Strassenstück ein Viereck, dessen Ecken am nahen
-  // und fernen Ende des Stücks liegen. Das nächste Stück beginnt genau an
-  // diesen Ecken, darum gibt es keine Spalten. Die Wand ist senkrecht, im
-  // Bild also eine Fläche zwischen zwei schrägen Linien (Fuss und Oberkante).
-  // Gezeichnet wird Spalte für Spalte: Für jede Bildspalte zwischen nahem
-  // und fernem Ende wird ausgerechnet, wo Fuss, Schichtgrenzen und Oberkante liegen.
-  wandZeichnen(s) {
+  // --- Hang (Bergseite) ---
+  // Der Hang besteht aus mehreren Flächenbändern von der Strasse nach aussen
+  // und oben (Querschnitt aus HANG_PROFIL, siehe Scenery.hangQuerschnitt).
+  // Jedes Band wird wie die Strasse gezeichnet: pro Strassenstück ein
+  // Viereck vom Querschnitt am nahen Ende zum Querschnitt am fernen Ende.
+  // Das nächste Stück beginnt genau an diesen Ecken. Weil nähere Stücke
+  // später gezeichnet werden, verdecken sie alles dahinter (Bäume, Tal,
+  // fernere Strasse). Hinter Kuppen wird abgeschnitten wie bei der Strasse.
+  // In der Ferne wird gespart: ab HANG_GRUPPE_AB ein Viereck pro Farbstreifen
+  // (4 Stücke) statt pro Stück, ab HANG_DETAIL_BIS ohne Schichten, Risse und
+  // Gras, ab HANG_EINFACH_AB nur noch 2 Bänder (Fels und Böschung).
+  hangZeichnen(e) {
     const f = CONFIG.FARBEN;
-    const B = CONFIG.BREITE;
-    const st = s.stueck;
-    const naechstes = Road.stueck(st.index + 1);
-    const fuss = Scenery.wandFuss();
-    const H = CONFIG.WAND_HOEHE;
-    const mN = Road.brennweite / s.nahZ;
-    const mF = Road.brennweite / s.fernZ;
-    const clip = Math.min(s.clip, CONFIG.HOEHE);
-    // Weit weg nur einfarbig, ohne Schichten, Risse und Gras (spart Arbeit, sieht man eh kaum)
-    const detail = s.nahZ <= CONFIG.WAND_DETAIL_BIS;
-    // Bildzeile für eine Höhe h (Meter über der Strasse) am nahen bzw. fernen Ende
-    const yN = (h) => this.horizont + (this.kameraY - s.bodenNah - h) * mN;
-    const yF = (h) => this.horizont + (this.kameraY - s.bodenFern - h) * mF;
-    const ctx = this.ctx;
-
+    const n = e.n;
+    const st = e.stueck;
+    // Wie viele Stücke zeichnet dieses Stück? Nah: nur sich selbst. Fern: den
+    // Rest seines Farbstreifens. Die ferneren Stücke im selben Streifen
+    // zeichnen dann nichts (das nächste Stück des Streifens kommt zuletzt dran).
+    let k = 1;
+    if (e.nahZ > CONFIG.HANG_GRUPPE_AB) {
+      const imStreifen = st.index % CONFIG.STREIFEN_LAENGE;
+      if (imStreifen !== 0 && n > 0 && this.sichtbar[n - 1].nahZ > CONFIG.HANG_GRUPPE_AB) return;
+      k = Math.min(CONFIG.STREIFEN_LAENGE - imStreifen, this.anzahlSichtbar - n);
+    }
+    const clip = Math.min(e.clip, CONFIG.HOEHE);
+    const dunkel = st.hell ? 0 : 1;
+    const p = Scenery.hangPunktNr;
+    const flaechen = Scenery.hangFlaechen;
     for (let nr = 0; nr < 2; nr++) {
-      const tN = s.wandNah[nr];
-      const tF = s.wandFern[nr];
-      if (tN <= 0 && tF <= 0) continue;
-      const seite = nr === 0 ? -1 : 1;
-      const xN = B / 2 + (s.mitteNah + seite * fuss - this.kameraX) * mN;
-      const xF = B / 2 + (s.mitteFern + seite * fuss - this.kameraX) * mF;
-      const x0 = Math.max(Math.round(Math.min(xN, xF)), 0);
-      const x1 = Math.min(Math.round(Math.max(xN, xF)), B);
-      if (x1 <= x0) continue;
-      const dx = xF - xN;
-      // Für eine Bildspalte x: wo zwischen nahem (0) und fernem (1) Ende?
-      const anteil = (x) => Math.min(Math.max((x + 0.5 - xN) / dx, 0), 1);
-      // Fuss und ausgefranste Oberkante (Höhe wächst beim Übergang mit t)
-      const fussN = yN(0);
-      const fussF = yF(0);
-      const obenN = yN(H * tN * st.wandOben);
-      const obenF = yF(H * tF * naechstes.wandOben);
-
-      // Gesteinsschichten von unten nach oben, jede in ihrer Farbe
-      const schichten = detail ? f.WAND_SCHICHTEN.length : 1;
-      for (let k = 0; k < schichten; k++) {
-        const untenN = k === 0 ? fussN : yN(st.wandSchichten[k - 1]);
-        const untenF = k === 0 ? fussF : yF(naechstes.wandSchichten[k - 1]);
-        const letzte = k === schichten - 1;
-        const grenzeN = letzte ? obenN : yN(st.wandSchichten[k]);
-        const grenzeF = letzte ? obenF : yF(naechstes.wandSchichten[k]);
-        const farbe = f.WAND_SCHICHTEN[detail ? k : 1];
-        ctx.fillStyle = st.hell ? farbe[0] : farbe[1];
-        for (let x = x0; x < x1; x++) {
-          const a = anteil(x);
-          const top = Math.max(Math.round(obenN + (obenF - obenN) * a), 0);
-          const y1 = Math.max(Math.round(grenzeN + (grenzeF - grenzeN) * a), top);
-          const y2 = Math.min(Math.round(untenN + (untenF - untenN) * a), clip);
-          if (y2 > y1) ctx.fillRect(x, y1, 1, y2 - y1);
+      // Gibt es auf dieser Seite in diesem Bereich überhaupt einen Hang?
+      let da = false;
+      for (let j = 0; j <= k; j++) if (Road.stueck(st.index + j).hang[nr] > 0) da = true;
+      if (!da) continue;
+      const xa = this.hangX[n][nr], ya = this.hangY[n][nr];
+      const xb = this.hangX[n + k][nr], yb = this.hangY[n + k][nr];
+      // Ein Band zwischen Punkt i und j des Querschnitts als Viereck
+      const band = (i, j, farbe) => this.flaeche(farbe,
+        xa[i], ya[i], xa[j], ya[j], xb[j], yb[j], xb[i], yb[i], clip, false);
+      // Von aussen nach innen: Liegt ein inneres Band im Bild vor einem
+      // äusseren (z. B. Fels vor der Böschung), verdeckt es dieses richtig.
+      if (e.nahZ > CONFIG.HANG_EINFACH_AB) {
+        band(p[2], p[4], f.HANG_BAENDER[3][dunkel]);
+        band(p[0], p[2], f.HANG_BAENDER[1][dunkel]);
+      } else if (e.nahZ > CONFIG.HANG_DETAIL_BIS) {
+        for (let b = p.length - 1; b >= 0; b--) band(b === 0 ? 0 : p[b - 1], p[b], f.HANG_BAENDER[b][dunkel]);
+      } else {
+        for (let j = flaechen.length - 1; j >= 0; j--) {
+          const fl = flaechen[j];
+          band(j, j + 1, fl.schicht >= 0 ? f.HANG_SCHICHTEN[fl.schicht][dunkel] : f.HANG_BAENDER[fl.band][dunkel]);
         }
-      }
-
-      // Helle Linie an der Oberkante, damit sich die Wand vom Himmel abhebt
-      ctx.fillStyle = f.WAND_KANTE;
-      for (let x = x0; x < x1; x++) {
-        const a = anteil(x);
-        const top = Math.round(obenN + (obenF - obenN) * a);
-        const boden = Math.min(Math.round(fussN + (fussF - fussN) * a), clip);
-        if (top >= 0 && top < boden - 1) ctx.fillRect(x, top, 1, 1);
-      }
-
-      // Risse und Grasbüschel nur in der Nähe und wenn das Stück im Bild
-      // ein paar Pixel breit ist (sonst wären es nur Krümel)
-      if (!detail || x1 - x0 < 3) continue;
-      const hoeheN = H * tN * st.wandOben; // Wandhöhe am nahen Ende in Metern
-      if (st.wandRiss && tN > 0.5) {
-        // Dunkler Riss, senkrecht, im ersten Viertel des Stücks
-        const rx = Math.round(xN + dx * 0.25);
-        const a = anteil(rx);
-        const breite = Math.max(1, Math.round(0.12 * mN));
-        const zeileBei = (h) => Math.round(yN(h) + (yF(h) - yN(h)) * a);
-        const top = Math.max(zeileBei(hoeheN), 0);
-        const ry1 = Math.max(zeileBei(st.wandRiss[1] * hoeheN), top);
-        const ry2 = Math.min(zeileBei(st.wandRiss[0] * hoeheN), clip);
-        if (ry2 > ry1) {
-          ctx.fillStyle = f.WAND_RISS;
-          // Oben ein Pixel versetzt, damit der Riss nicht wie ein Lineal aussieht
-          const mitte = Math.round((ry1 + ry2) / 2);
-          ctx.fillRect(rx, mitte, breite, ry2 - mitte);
-          ctx.fillRect(rx + seite, ry1, breite, mitte - ry1);
-        }
-      }
-      if (st.wandGras >= 0 && tN > 0.5) {
-        // Grasbüschel auf einer Schichtgrenze (wie auf einem kleinen Absatz)
-        const h = st.wandSchichten[st.wandGras];
-        if (h < hoeheN - 1) {
-          const m = (mN + mF) / 2;
-          const w = Math.max(1, Math.round(0.9 * m));
-          const gh = Math.max(1, Math.round(0.35 * m));
-          const gx = Math.round(xN + dx * 0.5 - w / 2);
-          const gy = Math.round((yN(h) + yF(h)) / 2) - gh;
-          if (gy >= 0 && gy + gh <= clip) {
-            ctx.fillStyle = f.WAND_GRAS;
-            ctx.fillRect(gx, gy, w, gh);
-            ctx.fillStyle = f.WAND_GRAS_HELL;
-            ctx.fillRect(gx + Math.floor(w / 4), gy, Math.max(1, Math.round(w / 2)), 1);
-          }
-        }
+        if (k === 1) this.hangDetails(e, nr, clip);
       }
     }
+  },
+
+  // Risse und Grasflecken im Fels (nur in der Nähe). Beides sind kleine
+  // Vierecke, die auf der Hangfläche liegen.
+  hangDetails(e, nr, clip) {
+    const f = CONFIG.FARBEN;
+    const st = e.stueck;
+    const naechstes = Road.stueck(st.index + 1);
+    const p = Scenery.hangPunktNr;
+    if (st.hangRiss && st.hang[nr] > 0.5) {
+      // Dunkler Riss, der ein Stück den Fels hinaufläuft (P0 bis P2),
+      // in der Mitte leicht versetzt, damit er nicht wie ein Lineal aussieht
+      const [von, bis] = st.hangRiss;
+      const mitte = (von + bis) / 2;
+      this.hangFleck(e, nr, p[0], p[2], von, mitte, 0.3, 0.37, f.HANG_RISS, clip);
+      this.hangFleck(e, nr, p[0], p[2], mitte, bis, 0.37, 0.44, f.HANG_RISS, clip);
+    }
+    if (st.hangGras >= 0 && st.hang[nr] > 0.5 && naechstes.hang[nr] > 0.5) {
+      // Grasfleck im helleren Gestein (P1 bis P2)
+      this.hangFleck(e, nr, p[1], p[2], st.hangGras, st.hangGras + 0.14, 0.15, 0.8, f.HANG_GRAS, clip);
+    }
+  },
+
+  // Kleines Viereck auf der Hangfläche zwischen Querschnitt-Punkt i und j
+  // (Höhe hVon bis hBis als Anteil dazwischen) und entlang der Strasse von
+  // zVon bis zBis (Anteil der Stücklänge). Mindestens 1 Pixel breit.
+  hangFleck(e, nr, i, j, hVon, hBis, zVon, zBis, farbe, clip) {
+    const st = e.stueck;
+    const naechstes = Road.stueck(st.index + 1);
+    const seite = nr === 0 ? -1 : 1;
+    const B = CONFIG.BREITE;
+    const pt = this.fleckPunkte;
+    let k = 0;
+    // Die vier Ecken der Reihe nach (rundherum)
+    for (const [h, z] of [[hVon, zVon], [hBis, zVon], [hBis, zBis], [hVon, zBis]]) {
+      // Ort auf dem Querschnitt am nahen und am fernen Ende, dazwischen gemischt
+      const ort = (s) => {
+        const U = s.hangU[nr], H = s.hangH[nr];
+        return [U[i] + (U[j] - U[i]) * h, H[i] + (H[j] - H[i]) * h];
+      };
+      const [uN, hN] = ort(st);
+      const [uF, hF] = ort(naechstes);
+      const tiefe = e.nahZ + (e.fernZ - e.nahZ) * z;
+      const m = Road.brennweite / tiefe;
+      const mitte = e.mitteNah + (e.mitteFern - e.mitteNah) * z;
+      const boden = e.bodenNah + (e.bodenFern - e.bodenNah) * z;
+      pt[k++] = B / 2 + (mitte + seite * (uN + (uF - uN) * z) - this.kameraX) * m;
+      pt[k++] = this.horizont + (this.kameraY - boden - (hN + (hF - hN) * z)) * m;
+    }
+    this.flaeche(farbe, pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], pt[6], pt[7], clip, true);
+  },
+
+  // Ein Viereck (4 Bildpunkte, rundherum der Reihe nach) Zeile für Zeile
+  // füllen, nur oberhalb der Bildzeile "clip" (hinter Kuppen verdeckt).
+  // Gleiche Regel wie viereck() beim Tal: Pro Zeile zählt ihre Mitte, darum
+  // teilen sich zwei Vierecke mit gemeinsamer Kante die Pixel genau.
+  // mindestensEinPixel: schmale Dinge (Risse) sollen nicht verschwinden.
+  flaeche(farbe, x1, y1, x2, y2, x3, y3, x4, y4, clip, mindestensEinPixel) {
+    const xs = this.viereckX;
+    const ys = this.viereckY;
+    xs[0] = x1; xs[1] = x2; xs[2] = x3; xs[3] = x4;
+    ys[0] = y1; ys[1] = y2; ys[2] = y3; ys[3] = y4;
+    const von = Math.max(Math.round(Math.min(y1, y2, y3, y4)), 0);
+    const bis = Math.min(Math.round(Math.max(y1, y2, y3, y4)), clip);
+    if (bis <= von) return;
+    const B = CONFIG.BREITE;
+    // Farbe nur einmal setzen: Das ist im Browser viel teurer als ein fillRect
+    this.ctx.fillStyle = farbe;
+    for (let y = von; y < bis; y++) {
+      const ym = y + 0.5;
+      let links = Infinity;
+      let rechts = -Infinity;
+      for (let k = 0; k < 4; k++) {
+        // Kante von Punkt k zu Punkt k+1; immer von oben nach unten rechnen,
+        // damit Nachbarvierecke für dieselbe Kante genau dasselbe herausbekommen
+        let xa = xs[k], ya = ys[k], xb = xs[(k + 1) % 4], yb = ys[(k + 1) % 4];
+        if (ya > yb) { const tx = xa; xa = xb; xb = tx; const ty = ya; ya = yb; yb = ty; }
+        if (ym < ya || ym >= yb) continue;
+        const x = xa + (xb - xa) * (ym - ya) / (yb - ya);
+        if (x < links) links = x;
+        if (x > rechts) rechts = x;
+      }
+      if (rechts < links) continue;
+      let a = Math.round(links);
+      let b = Math.round(rechts);
+      if (mindestensEinPixel && b <= a) b = a + 1;
+      a = Math.max(a, 0);
+      b = Math.min(b, B);
+      if (b > a) this.ctx.fillRect(a, y, b - a, 1);
+    }
+  },
+
+  // Ist auf Stück i oder den nächsten paar Stücken irgendwo ein Hang?
+  hangInDerNaehe(i) {
+    for (let j = i; j <= i + CONFIG.STREIFEN_LAENGE; j++) {
+      const s = Road.stueck(j);
+      if (s.hang[0] > 0 || s.hang[1] > 0) return true;
+    }
+    return false;
   },
 
   // --- Bänder: Leitplanke, Holzzaun (später Absperrband) ---
@@ -1265,6 +1350,8 @@ const Render = {
       'OBJEKTE ' + this.objekteGezeichnet + ' / MAX ' + CONFIG.MAX_OBJEKTE,
       // Gelände links und rechts, mit Prozent (beim Übergang unter 100)
       'GELÄNDE L ' + this.gelaendeText(stueck, 0) + '  R ' + this.gelaendeText(stueck, 1),
+      // Wie weit der Hang gewachsen ist (0 % = flach am Bankett, 100 % = voller Querschnitt)
+      'HANG L ' + Math.round(stueck.hang[0] * 100) + ' %  R ' + Math.round(stueck.hang[1] * 100) + ' %',
     ];
     let breite = 0;
     for (const z of zeilen) breite = Math.max(breite, this.textBreite(z));
@@ -1273,9 +1360,9 @@ const Render = {
     zeilen.forEach((z, i) => this.text(z, 4, 4 + i * 7, 1, f.DEBUG_TEXT));
   },
 
-  // z. B. "WAND 100%", "TAL 45%" oder "-" (nr: 0 = links, 1 = rechts)
+  // z. B. "HANG 100%", "TAL 45%" oder "-" (nr: 0 = links, 1 = rechts)
   gelaendeText(stueck, nr) {
-    if (stueck.wand[nr] > 0) return 'WAND ' + Math.round(stueck.wand[nr] * 100) + '%';
+    if (stueck.hang[nr] > 0) return 'HANG ' + Math.round(stueck.hang[nr] * 100) + '%';
     if (stueck.tal[nr] > 0) return 'TAL ' + Math.round(stueck.tal[nr] * 100) + '%';
     return '-';
   },
