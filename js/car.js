@@ -8,6 +8,7 @@ const Car = {
   z: 0,          // zurückgelegte Strecke in Metern (vorwärts)
   x: 0,          // seitliche Position in Metern (0 = Strassenmitte, minus = links)
   tempo: 0,      // aktuelles Tempo in m/s
+  lenkung: 0,    // aktueller Lenkeinschlag von -1 (voll links) bis +1 (voll rechts), folgt den Tasten mit etwas Verzögerung
   aufBankett: false,
   aufGras: false,
 
@@ -33,6 +34,12 @@ const Car = {
     // Beschleunigung oben raus spürbar nach, wie bei einem schweren Auto.
     this.tempo -= CONFIG.LUFTWIDERSTAND * this.tempo * this.tempo * dt;
 
+    // --- Steigung ---
+    // Bergauf zieht die Schwerkraft das Auto zurück, bergab schiebt sie es an.
+    // Wirkt immer, also auch beim Ausrollen (bergab rollt man länger).
+    const stueck = Road.stueckBei(this.z);
+    this.tempo -= stueck.steigung * CONFIG.HANGABTRIEB * dt;
+
     // --- Bankett und Gras bremsen ---
     // Massgebend ist die Automitte: Steht sie neben dem Asphalt, ist man
     // auf dem Bankett, steht sie noch weiter draussen, auf dem Gras.
@@ -54,13 +61,30 @@ const Car = {
     this.getriebe(dt);
 
     // --- Lenken ---
-    // Wirkt nur beim Fahren: Je schneller, desto stärker. Im Stand
-    // (tempo = 0) ergibt die Rechnung 0, das Auto bewegt sich also nicht.
+    // Der Einschlag folgt den Tasten nicht sofort, sondern gleitet hin.
+    // So wirkt das Auto schwerer. Mit Math.exp ist das auf 60 Hz und
+    // 144 Hz gleich schnell.
     let richtung = 0;
     if (Input.links())  richtung -= 1;
     if (Input.rechts()) richtung += 1;
+    if (CONFIG.LENK_TRAEGHEIT > 0) {
+      this.lenkung += (richtung - this.lenkung) * (1 - Math.exp(-dt / CONFIG.LENK_TRAEGHEIT));
+    } else {
+      this.lenkung = richtung;
+    }
+    // Wirkt nur beim Fahren: Je schneller, desto stärker. Im Stand
+    // (tempo = 0) ergibt die Rechnung 0, das Auto bewegt sich also nicht.
     const tempoAnteil = this.tempo / this.hoechstTempo(); // 0 bis 1
-    this.x += richtung * CONFIG.LENKSTAERKE * tempoAnteil * dt;
+    this.x += this.lenkung * CONFIG.LENKSTAERKE * tempoAnteil * dt;
+
+    // --- Fliehkraft ---
+    // In der Kurve wird das Auto nach aussen getragen: bei einer
+    // Rechtskurve nach links und umgekehrt. Stärke = Kurvenwert x Tempo im
+    // Quadrat x Faktor. Das Lenken wächst nur einfach mit dem Tempo, die
+    // Fliehkraft aber im Quadrat. Darum gewinnt ab einem gewissen Tempo
+    // die Kurve, und man muss vorher bremsen.
+    this.x -= stueck.kurvenWert * this.tempo * this.tempo * CONFIG.FLIEHKRAFT_FAKTOR * dt;
+
     this.x = Math.min(Math.max(this.x, -CONFIG.MAX_SEITLICH), CONFIG.MAX_SEITLICH);
 
     // --- Vorwärts fahren ---

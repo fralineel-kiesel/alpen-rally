@@ -15,7 +15,7 @@ const CONFIG = {
   HORIZONT_Y: 80,           // Bildzeile, auf der der Horizont liegt (kleiner = mehr Strasse sichtbar)
   SICHTWINKEL: 90,          // Blickwinkel der Kamera in Grad (grösser = Strasse wirkt schmaler und weiter weg)
   KAMERA_HOEHE: 2.5,        // Höhe der Kamera über der Strasse in Metern (tiefer = Tempo wirkt schneller)
-  SICHTWEITE: 300,          // wie viele Strassenstücke nach vorne gezeichnet werden
+  SICHTWEITE: 200,          // wie viele Strassenstücke nach vorne gezeichnet werden (200 x 2 m = 400 m weit)
 
   // --- Strasse ---
   STRASSE_HALBE_BREITE: 4,  // halbe Strassenbreite in Metern (4 = 8 m breite Strasse)
@@ -23,7 +23,31 @@ const CONFIG = {
   MITTELLINIE_BREITE: 0.15, // Breite der gestrichelten Mittellinie in Metern
   STUECK_LAENGE: 2,         // Länge eines Strassenstücks in Metern
   STREIFEN_LAENGE: 4,       // wie viele Strassenstücke eine Farbe behalten, bevor sie wechselt (Tempo-Streifen)
-  STRECKEN_STUECKE: 1000,   // Anzahl Strassenstücke der Strecke; danach beginnt sie wieder von vorne
+
+  // --- Kurven und Hügel ---
+  // Die Strecke selbst (Abschnitte mit Länge, Kurve, Höhe) steht in js/track.js.
+  UEBERGANG: 60,            // auf so vielen Metern gehen zwei Abschnitte weich ineinander über (Kurve und Steigung); grösser = sanfter
+  // Grenztempo pro Kurvenstärke in km/h (Stelle 0 = gerade, Stelle 1 = Stärke 1 ... Stelle 6 = Haarnadel).
+  // Bis zu diesem Tempo kommt man mit kräftigem Lenken noch gut durch die Kurve.
+  // Etwa ein Viertel schneller, und man wird trotz vollem Einschlag nach aussen getragen.
+  // Aus dieser Tabelle wird auch berechnet, wie eng die Kurve im Bild aussieht.
+  KURVEN_GRENZTEMPO: [0, 200, 155, 120, 95, 75, 60],
+  // Fliehkraft: seitliches Abdriften in m/s = Kurvenwert x Tempo im Quadrat x dieser Faktor.
+  // (Kurvenwert = 1 / Grenztempo, also: enge Kurve = grosser Wert.)
+  // 0.1 heisst: Beim Grenztempo braucht man etwa 80 % des vollen Lenkeinschlags,
+  // um die Linie zu halten. Grösser = Kurven tragen stärker nach aussen.
+  FLIEHKRAFT_FAKTOR: 0.1,
+  // Wie stark sich die Strasse im Bild biegt. Grösser = Kurven sehen enger aus.
+  // Mit 12 hat eine Kurve der Stärke 1 einen Radius von ca. 260 m, Stärke 3 ca. 90 m, Stärke 6 ca. 25 m.
+  KURVEN_OPTIK: 12,
+  // Steigung: So viel m/s pro Sekunde wird das Auto bei 100 % Steigung langsamer
+  // (bergab entsprechend schneller). Bei 10 % Steigung also 0.6 m/s pro Sekunde.
+  // Zum Vergleich: Im 4. Gang beschleunigt das Auto mit 2.6. Grösser = Berge spürbarer.
+  HANGABTRIEB: 6,
+  // Berge im Hintergrund wandern in Kurven seitlich (Pixel pro Bogenmass Drehung).
+  // Die vorderen Berge etwas schneller, damit es nach Tiefe aussieht.
+  BERG_PARALLAX_HINTEN: 40,
+  BERG_PARALLAX_VORNE: 70,
 
   // --- Auto: Motor und Getriebe (automatische 5-Gang-Schaltung) ---
   // Höchsttempo pro Gang in km/h: Bei diesem Tempo dreht der Motor im jeweiligen
@@ -45,6 +69,7 @@ const CONFIG = {
   BREMSKRAFT: 22,           // so viel m/s langsamer pro Sekunde beim Bremsen (22 = von Höchsttempo auf 0 in ca. 2.5 s)
   ROLLWIDERSTAND: 3,        // so viel m/s langsamer pro Sekunde ohne Gas (klein = rollt lange aus)
   LENKSTAERKE: 7,           // seitliches Tempo in m/s bei Höchsttempo und voll eingeschlagen; bei halbem Tempo halb so viel
+  LENK_TRAEGHEIT: 0.12,     // so viele Sekunden braucht die Lenkung, um ca. zwei Drittel des Einschlags zu erreichen (0 = sofort, 0.3 = schwammig)
   MAX_SEITLICH: 10,         // so weit (Meter ab Strassenmitte) kann man maximal neben die Strasse fahren
 
   // --- Auto: Bankett und Gras ---
@@ -98,5 +123,7 @@ const CONFIG = {
     ANZEIGE_ROT: '#d8452c',        // roter Drehzahlbereich
     ANZEIGE_NADEL: '#ff3b1f',      // Nadel
     ANZEIGE_NABE: '#3a2e22',       // Mittelpunkt, an dem die Nadel befestigt ist
+    DEBUG_HINTERGRUND: 'rgba(0, 0, 0, 0.6)', // Kasten hinter der Debug-Anzeige (F3)
+    DEBUG_TEXT: '#ffffff',
   },
 };

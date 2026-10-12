@@ -27,11 +27,41 @@ const PIXEL_SCHRIFT = {
   '7': ['111', '001', '010', '010', '010'],
   '8': ['111', '101', '111', '101', '111'],
   '9': ['111', '101', '111', '001', '111'],
-  'K': ['101', '101', '110', '101', '101'],
-  'M': ['101', '111', '111', '101', '101'],
+  'A': ['010', '101', '111', '101', '101'],
+  'B': ['110', '101', '110', '101', '110'],
+  'C': ['011', '100', '100', '100', '011'],
+  'D': ['110', '101', '101', '101', '110'],
+  'E': ['111', '100', '110', '100', '111'],
+  'F': ['111', '100', '110', '100', '100'],
+  'G': ['011', '100', '101', '101', '011'],
   'H': ['101', '101', '111', '101', '101'],
+  'I': ['111', '010', '010', '010', '111'],
+  'J': ['001', '001', '001', '101', '010'],
+  'K': ['101', '101', '110', '101', '101'],
+  'L': ['100', '100', '100', '100', '111'],
+  'M': ['101', '111', '111', '101', '101'],
   'N': ['1001', '1101', '1011', '1001', '1001'],
+  'O': ['010', '101', '101', '101', '010'],
+  'P': ['110', '101', '110', '100', '100'],
+  'Q': ['010', '101', '101', '110', '011'],
+  'R': ['110', '101', '110', '101', '101'],
+  'S': ['011', '100', '010', '001', '110'],
+  'T': ['111', '010', '010', '010', '010'],
+  'U': ['101', '101', '101', '101', '111'],
+  'V': ['101', '101', '101', '101', '010'],
+  'W': ['101', '101', '111', '111', '101'],
+  'X': ['101', '101', '010', '101', '101'],
+  'Y': ['101', '101', '010', '010', '010'],
+  'Z': ['111', '001', '010', '100', '111'],
+  'Ä': ['101', '010', '101', '111', '101'],
+  'Ö': ['101', '000', '111', '101', '111'],
+  'Ü': ['101', '000', '101', '101', '111'],
   '/': ['001', '001', '010', '100', '100'],
+  '-': ['000', '000', '111', '000', '000'],
+  '+': ['000', '010', '111', '010', '000'],
+  '%': ['101', '001', '010', '100', '101'],
+  '.': ['0', '0', '0', '0', '1'],
+  ':': ['0', '1', '0', '1', '0'],
   ' ': ['000', '000', '000', '000', '000'],
 };
 
@@ -44,6 +74,12 @@ const Render = {
   // Fertig vorgezeichnete Zifferblätter (ohne Nadel), siehe zifferblattVorzeichnen
   blattDrehzahl: null,
   blattTempo: null,
+  // Berg-Silhouetten als Höhe pro Pixelspalte (einmal ausgerechnet) und
+  // wie weit sie gerade seitlich verschoben sind (Parallax in Kurven)
+  hoehenHinten: null,
+  hoehenVorne: null,
+  bergVersatzHinten: 0,
+  bergVersatzVorne: 0,
 
   start(ctx) {
     this.ctx = ctx;
@@ -51,6 +87,8 @@ const Render = {
     this.blattDrehzahl = this.zifferblattVorzeichnen(
       CONFIG.DREHZAHL_SKALA_MAX / 1000, 1, 1, 0.5, CONFIG.DREHZAHL_ROT_AB / 1000);
     this.blattTempo = this.zifferblattVorzeichnen(CONFIG.TEMPO_SKALA_MAX, 40, 40, 20, null);
+    this.hoehenHinten = this.bergHoehen(BERGE_HINTEN);
+    this.hoehenVorne = this.bergHoehen(BERGE_VORNE);
   },
 
   // Nadeln nachführen. "Glätten" heisst: Pro Zeitschritt ein Stück des
@@ -59,15 +97,28 @@ const Render = {
     const anteil = 1 - Math.exp(-dt / CONFIG.NADEL_TRAEGHEIT);
     this.nadelDrehzahl += (Car.drehzahl - this.nadelDrehzahl) * anteil;
     this.nadelTempo += (Car.tempo * 3.6 - this.nadelTempo) * anteil;
+
+    // Berge in Kurven seitlich wandern lassen. "drehung" ist, wie stark
+    // sich das Auto in diesem Zeitschritt dreht (Tempo x Krümmung).
+    // Rechtskurve: Das Auto dreht nach rechts, die Berge wandern nach links.
+    const drehung = Car.tempo * Road.stueckBei(Car.z).kruemmung * dt;
+    this.bergVersatzHinten -= drehung * CONFIG.BERG_PARALLAX_HINTEN;
+    this.bergVersatzVorne -= drehung * CONFIG.BERG_PARALLAX_VORNE;
+    // Im Bereich 0 bis BREITE halten, damit die Zahl nicht endlos wächst
+    const b = CONFIG.BREITE;
+    this.bergVersatzHinten = ((this.bergVersatzHinten % b) + b) % b;
+    this.bergVersatzVorne = ((this.bergVersatzVorne % b) + b) % b;
   },
 
-  zeichneAlles() {
+  // fps: Bilder pro Sekunde, nur für die Debug-Anzeige
+  zeichneAlles(fps) {
     this.himmel();
-    this.berge(BERGE_HINTEN, CONFIG.FARBEN.BERG_HINTEN);
-    this.berge(BERGE_VORNE, CONFIG.FARBEN.BERG_VORNE);
+    this.berge(this.hoehenHinten, this.bergVersatzHinten, CONFIG.FARBEN.BERG_HINTEN);
+    this.berge(this.hoehenVorne, this.bergVersatzVorne, CONFIG.FARBEN.BERG_VORNE);
     this.strasse();
     this.auto();
     this.anzeigen();
+    if (Input.debugAnzeige) this.debug(fps);
   },
 
   // Himmel in einigen Farbstufen von oben nach unten (Retro-Verlauf)
@@ -86,16 +137,29 @@ const Render = {
     }
   },
 
-  // Berge Spalte für Spalte zeichnen: Für jede Pixelspalte die Höhe aus
-  // den beiden nächsten Punkten ausrechnen und einen senkrechten Strich ziehen.
-  berge(punkte, farbe) {
-    this.ctx.fillStyle = farbe;
+  // Für jede Pixelspalte die Berghöhe aus den beiden nächsten Punkten
+  // ausrechnen. Passiert nur einmal beim Start, nicht in jedem Bild.
+  bergHoehen(punkte) {
+    const hoehen = [];
     let p = 0;
     for (let x = 0; x < CONFIG.BREITE; x++) {
       while (p < punkte.length - 2 && x >= punkte[p + 1][0]) p++;
       const [x1, h1] = punkte[p];
       const [x2, h2] = punkte[p + 1];
-      const hoehe = Math.round(h1 + (h2 - h1) * (x - x1) / (x2 - x1));
+      hoehen.push(Math.round(h1 + (h2 - h1) * (x - x1) / (x2 - x1)));
+    }
+    return hoehen;
+  },
+
+  // Berge Spalte für Spalte als senkrechte Striche zeichnen, um "versatz"
+  // Pixel seitlich verschoben. Was rechts hinausläuft, kommt links wieder
+  // herein (die Silhouette wiederholt sich rundherum).
+  berge(hoehen, versatz, farbe) {
+    this.ctx.fillStyle = farbe;
+    const b = CONFIG.BREITE;
+    const v = Math.round(versatz);
+    for (let x = 0; x < b; x++) {
+      const hoehe = hoehen[(((x - v) % b) + b) % b];
       this.ctx.fillRect(x, CONFIG.HORIZONT_Y - hoehe, 1, hoehe);
     }
   },
@@ -108,30 +172,52 @@ const Render = {
     ctx.fillStyle = f.GRAS_DUNKEL;
     ctx.fillRect(0, CONFIG.HORIZONT_Y, CONFIG.BREITE, CONFIG.HOEHE - CONFIG.HORIZONT_Y);
 
+    const L = CONFIG.STUECK_LAENGE;
     const kameraZ = Car.z;
     const kameraX = Car.x;
-    const ersterIndex = Math.floor(kameraZ / CONFIG.STUECK_LAENGE);
+    // Die Kamera fährt mit der Strasse hoch und runter
+    const bodenHoehe = Road.hoeheBei(kameraZ);
+    const kameraY = bodenHoehe + CONFIG.KAMERA_HOEHE;
+    const ersterIndex = Math.floor(kameraZ / L);
+
+    // Kurven: Die Strassenmitte wandert mit jedem Stück weiter zur Seite.
+    // "versatz" = wie weit (Meter) die Mitte gerade neben der Blickrichtung
+    // liegt, "neigung" = wie viel Versatz pro Meter dazukommt. Jedes Stück
+    // ändert die Neigung um seine Krümmung. Aufsummiert ergibt das eine
+    // Strasse, die sich zum Horizont hin immer stärker wegbiegt.
+    let versatz = 0;
+    let neigung = 0;
+
     // Bis zu welcher Bildzeile (von unten) schon gezeichnet ist.
-    // Wir zeichnen von vorne nach hinten; Weiter-hinten-Liegendes darf
-    // nichts Näheres übermalen.
+    // Wir zeichnen von nah nach fern und nur, was höher liegt als diese
+    // Zeile. Was hinter einer Kuppe tiefer liegt, wird so automatisch
+    // verdeckt und taucht erst wieder auf, wenn es höher liegt.
     let maxY = CONFIG.HOEHE;
 
-    for (let n = 0; n < CONFIG.SICHTWEITE; n++) {
+    for (let n = 0; n < CONFIG.SICHTWEITE && maxY > 0; n++) {
       const index = ersterIndex + n;
-      const stueck = Road.stueckBei(index * CONFIG.STUECK_LAENGE);
+      const stueck = Road.stueck(index);
 
       // Abstand von Kamera zu Anfang und Ende des Stücks.
-      // Das Stück direkt unter der Kamera beginnt hinter ihr; wir
-      // schneiden es knapp vor der Kamera ab (sonst Division durch 0).
-      const abstandVorne = Math.max(index * CONFIG.STUECK_LAENGE - kameraZ, 0.1);
-      const abstandHinten = (index + 1) * CONFIG.STUECK_LAENGE - kameraZ;
+      // Das Stück direkt unter der Kamera beginnt hinter ihr; für die
+      // Kurve rechnen wir ab der Kamera, fürs Bild schneiden wir es knapp
+      // vor der Kamera ab (sonst Division durch 0).
+      const abstandVorne = index * L - kameraZ;
+      const abstandHinten = abstandVorne + L;
+      const strecke = abstandHinten - Math.max(abstandVorne, 0);
 
-      const nah = Road.projiziere(0, abstandVorne, kameraX);
-      const fern = Road.projiziere(0, abstandHinten, kameraX);
+      const versatzVorne = versatz;
+      versatz += neigung * strecke + stueck.kruemmung * strecke * strecke / 2;
+      neigung += stueck.kruemmung * strecke;
 
-      const oben = Math.max(Math.round(fern.y), CONFIG.HORIZONT_Y);
+      const hoeheVorne = n === 0 ? bodenHoehe : stueck.y;
+      const hoeheHinten = Road.stueck(index + 1).y;
+      const nah = Road.projiziere(versatzVorne, hoeheVorne, Math.max(abstandVorne, 0.1), kameraX, kameraY);
+      const fern = Road.projiziere(versatz, hoeheHinten, abstandHinten, kameraX, kameraY);
+
+      const oben = Math.max(Math.round(fern.y), 0);
       const unten = Math.min(Math.round(nah.y), maxY);
-      if (unten <= oben) continue; // Stück ist kleiner als ein Pixel oder verdeckt
+      if (unten <= oben) continue; // kleiner als ein Pixel, verdeckt oder Rückseite einer Kuppe
 
       this.stueckZeichnen(stueck, nah, fern, oben, unten);
       maxY = oben;
@@ -147,7 +233,8 @@ const Render = {
     const linie = CONFIG.MITTELLINIE_BREITE / 2;
 
     for (let y = oben; y < unten; y++) {
-      const t = (y + 0.5 - fern.y) / (nah.y - fern.y); // 0 = fern, 1 = nah
+      // 0 = fern, 1 = nah. Begrenzt, weil bei ganz flachen Stücken sonst Unsinn herauskommt
+      const t = Math.min(Math.max((y + 0.5 - fern.y) / (nah.y - fern.y), 0), 1);
       const mitte = fern.x + (nah.x - fern.x) * t;
       const m = fern.massstab + (nah.massstab - fern.massstab) * t;
 
@@ -228,6 +315,31 @@ const Render = {
     this.text(zahl, x + 6 - this.textBreite(zahl), y + 11, 1, f.ANZEIGE_SKALA);
     this.text('KM/H', x - 7, y + 18, 1, f.ANZEIGE_RAHMEN);
     this.nadel(x, y, this.nadelTempo / CONFIG.TEMPO_SKALA_MAX);
+  },
+
+  // --- Debug-Anzeige (Taste F3) ---
+  // Hilft beim Testen und beim Bearbeiten der Strecke in track.js.
+  debug(fps) {
+    const f = CONFIG.FARBEN;
+    const stueck = Road.stueckBei(Car.z);
+    const kurve = stueck.kurve;
+    let kurveText = 'GERADE';
+    if (Math.abs(kurve) >= 0.05) {
+      kurveText = (kurve < 0 ? 'LINKS ' : 'RECHTS ') + Math.abs(kurve).toFixed(1);
+    }
+    const steigung = stueck.steigung * 100;
+    const zeilen = [
+      'FPS ' + Math.round(fps),
+      'STRECKE ' + Math.floor(Car.z) + ' / ' + Math.round(Road.laenge) + ' M',
+      'ABSCHNITT ' + stueck.abschnitt.toUpperCase(),
+      'KURVE ' + kurveText,
+      'STEIGUNG ' + (steigung > 0.05 ? '+' : '') + steigung.toFixed(1) + ' %',
+    ];
+    let breite = 0;
+    for (const z of zeilen) breite = Math.max(breite, this.textBreite(z));
+    this.ctx.fillStyle = f.DEBUG_HINTERGRUND;
+    this.ctx.fillRect(2, 2, breite + 4, zeilen.length * 7 + 2);
+    zeilen.forEach((z, i) => this.text(z, 4, 4 + i * 7, 1, f.DEBUG_TEXT));
   },
 
   // Winkel (Bogenmass) für einen Anteil der Skala von 0 bis 1.
