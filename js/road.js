@@ -13,6 +13,7 @@
 
 const Road = {
   stuecke: [],   // alle Strassenstücke der Strecke
+  abschnitte: [], // die Abschnitte aus track.js, aufbereitet (mit erstem Stück), für scenery.js
   laenge: 0,     // Gesamtlänge der Strecke in Metern
   brennweite: 0, // wie stark die Perspektive verkleinert (aus dem Sichtwinkel berechnet)
 
@@ -22,6 +23,12 @@ const Road = {
     const halberWinkel = (CONFIG.SICHTWINKEL / 2) * Math.PI / 180;
     this.brennweite = (CONFIG.BREITE / 2) / Math.tan(halberWinkel);
     this.streckeBauen();
+    // Wie weit vor der Kamera das Auto auf der Strasse steht (Meter). Das Auto
+    // wird immer unten im Bild gezeichnet; seine Hinterräder berühren die
+    // Strasse dort, wo dieser Abstand im Bild hinfällt. Braucht man für die
+    // Zusammenstösse und dafür, ob ein Objekt vor oder hinter dem Auto steht.
+    const autoUnten = CONFIG.HOEHE - CONFIG.AUTO_ABSTAND_UNTEN;
+    this.autoAbstand = CONFIG.KAMERA_HOEHE * this.brennweite / (autoUnten - CONFIG.HORIZONT_Y);
   },
 
   // Aus den Abschnitten in track.js die vielen kurzen Stücke bauen.
@@ -39,6 +46,8 @@ const Road = {
         kurve: Math.min(Math.max(a.kurve || 0, -maxStaerke), maxStaerke),
         auto: a.hoehe === 'auto',
         hoehe: a.hoehe === 'auto' ? 0 : (a.hoehe || 0),
+        umgebung: a.umgebung || 'wiese', // Landschaft am Rand, siehe scenery.js
+        dichte: a.dichte || 1,           // mehr (z. B. 1.5) oder weniger (0.5) Objekte als normal
       };
     });
 
@@ -58,6 +67,7 @@ const Road = {
     //    werden aber an den Grenzen kurz weich übergeblendet (siehe mischen).
     this.stuecke = [];
     abschnitte.forEach((a, nr) => {
+      a.erstesStueck = this.stuecke.length;
       for (let j = 0; j < a.anzahl; j++) {
         const i = this.stuecke.length;
         const o = (j + 0.5) * L; // Mitte des Stücks, gemessen ab Abschnittsbeginn
@@ -72,6 +82,8 @@ const Road = {
           // Diese Streifen rasen am Auto vorbei und zeigen so das Tempo.
           hell: Math.floor(i / CONFIG.STREIFEN_LAENGE) % 2 === 0,
           abschnitt: a.name,
+          abschnittNr: nr,
+          objekte: [],                      // Bäume, Felsen usw. auf diesem Stück (füllt scenery.js)
           kurve: kurve,                     // Kurvenstärke wie in track.js, aber weich übergeblendet
           grenztempo: grenzKmh / 3.6,       // in m/s, für die Kurven-Physik (siehe car.js); Infinity = gerade
           kruemmung: Math.sign(kurve) * CONFIG.KURVEN_OPTIK * kehrwert * kehrwert,
@@ -81,6 +93,7 @@ const Road = {
       }
     });
     this.laenge = this.stuecke.length * L;
+    this.abschnitte = abschnitte;
 
     // 4) Höhen aufsummieren: Jedes Stück beginnt dort, wo das vorige endet.
     let y = 0;

@@ -127,6 +127,52 @@ const CONFIG = {
   GRAS_HOECHSTTEMPO: 16,    // auf dem Gras wird das Auto auf dieses Tempo heruntergebremst (16 m/s = ca. 58 km/h)
   GRAS_BREMSWIRKUNG: 18,    // so stark (m/s pro Sekunde) bremst das Gras, solange man schneller als GRAS_HOECHSTTEMPO ist
 
+  // --- Landschaft am Strassenrand (Bäume, Felsen, Schilder ...) ---
+  // Was in welcher Umgebung steht (wald, wiese, fels, lichtung), steht in js/scenery.js.
+  // Die Grafiken selbst stehen in js/sprites.js.
+  SZENERIE_SEED: 1987,           // Startzahl für den Zufall. Gleiche Zahl = jedes Mal alles an derselben Stelle. Andere Zahl = andere Verteilung.
+  SZENERIE_MIN_ABSTAND: 0.3,     // so viele Meter Platz bleiben mindestens zwischen Bankett und Objekt (nichts steht auf Strasse oder Bankett)
+  SZENERIE_DICHTE: 1,            // alle Umgebungen dichter (z. B. 1.3) oder lichter (0.7) machen
+  // Leitplanken kommen automatisch an die Aussenseite enger Kurven ...
+  LEITPLANKE_AB_STAERKE: 4,      // ... ab dieser Kurvenstärke immer
+  LEITPLANKE_GEFAELLE_STAERKE: 3, // ... und ab dieser Stärke, wenn es dabei bergab geht
+  LEITPLANKE_GEFAELLE: 0.04,     // "bergab" heisst: mindestens so viel Gefälle (0.04 = 4 %)
+  LEITPLANKE_VORLAUF: 16,        // so viele Meter vor der Kurve beginnt die Planke schon
+  LEITPLANKE_NACHLAUF: 16,       // so viele Meter nach der Kurve hört sie erst auf
+  LEITPLANKE_ABSTAND: 0.3,       // Meter zwischen Bankett und Leitplanke
+  // Kurvenschilder (gelb mit Pfeil) stehen vor Kurven an der Aussenseite
+  KURVENSCHILD_AB_STAERKE: 3,    // nur vor Kurven ab dieser Stärke
+  KURVENSCHILD_VORLAUF: 100,     // so viele Meter vor Kurvenbeginn steht das Schild
+  KURVENSCHILD_ABSTAND: 0.6,     // Meter zwischen Bankett und Schild (steht dort eine Leitplanke, kommt das Schild dahinter)
+
+  // --- Landschaft: Darstellung ---
+  OBJEKT_MIN_PIXEL: 2,           // Objekte, die im Bild weniger hoch wären, werden weggelassen (spart Arbeit, sieht man eh nicht)
+  OBJEKT_MIN_ENTFERNUNG: 1,      // näher als so viele Meter vor der Kamera wird nichts gezeichnet (wäre riesig und sowieso neben dem Bild)
+  MAX_OBJEKTE: 300,              // höchstens so viele Objekte pro Bild zeichnen (die nächsten zuerst). Kleiner = schneller, aber hinten lichter.
+  WALDLINIE_PARALLAX: 110,       // Waldlinie am Horizont wandert in Kurven seitlich (schneller als die Berge, siehe BERG_PARALLAX_...)
+  WALDLINIE_HOEHE: 14,           // höchste Baumspitze der Waldlinie über dem Horizont, in Pixeln
+  WOLKEN_DRIFT: 1.5,             // so viele Pixel pro Sekunde treiben die Wolken von selbst nach rechts
+  WOLKEN_PARALLAX: 25,           // so stark wandern die Wolken in Kurven mit (weniger als die Berge = wirken weit weg)
+  // Wolken: x im Bild (0 bis 480, die Wolken laufen rundherum), Höhe über dem Horizont
+  // (höchstens ca. 68, sonst rutscht die Wolke bei Gefälle oben aus dem Bild), Form (0, 1 oder 2)
+  WOLKEN: [
+    { x: 20, hoehe: 62, form: 0 },
+    { x: 150, hoehe: 68, form: 1 },
+    { x: 230, hoehe: 58, form: 2 },
+    { x: 380, hoehe: 66, form: 1 },
+    { x: 440, hoehe: 54, form: 0 },
+  ],
+
+  // --- Zusammenstösse ---
+  AUTO_KOLLISION_BREITE: 1.6,    // so breit (Meter) ist das Auto beim Zusammenstoss
+  AUTO_KOLLISION_LAENGE: 3,      // so lang (Meter) ist das Auto beim Zusammenstoss
+  AUFPRALL_TEMPO: 0.25,          // fest (Baum, Fels, Leitplanke ...): Tempo sinkt auf diesen Anteil (0.25 = 25 % vom aktuellen Tempo)
+  AUFPRALL_WACKELN: 0.3,         // so viele Sekunden wackelt das Bild nach einem harten Aufprall
+  AUFPRALL_WACKEL_PIXEL: 2,      // so viele Pixel weit wackelt das Bild höchstens
+  AUFPRALL_SPERRE: 1,            // so viele Sekunden nach einem harten Aufprall gibt es keinen weiteren
+  AUFPRALL_ABSTOSS: 0.3,         // so viele Meter Luft zwischen Auto und Objekt nach dem Versetzen Richtung Strassenmitte
+  BUSCH_TEMPO: 0.85,             // weich (Busch): Tempo sinkt auf diesen Anteil (0.85 = 15 % weniger), kein Wackeln
+
   // --- Auto: Aussehen (Platzhalter) ---
   AUTO_BREITE: 52,          // Breite des Platzhalter-Autos in Pixeln
   AUTO_HOEHE: 26,           // Höhe des Platzhalter-Autos in Pixeln
@@ -150,6 +196,8 @@ const CONFIG = {
     HIMMEL_STUFEN: 8,              // in wie vielen Farbstufen der Himmel verläuft (wenige = mehr Retro)
     BERG_HINTEN: '#7d8ca8',        // weit entfernte Berge (bläulich, wirken dadurch weiter weg)
     BERG_VORNE: '#56607a',         // nähere Berge
+    WALDLINIE_HINTEN: '#365a48',   // Waldlinie am Horizont, hintere Baumreihe (etwas bläulich = weiter weg)
+    WALDLINIE_VORNE: '#22412c',    // Waldlinie, vordere Baumreihe (dunkles Tannengrün)
     GRAS_HELL: '#3fa535',
     GRAS_DUNKEL: '#2f8a2a',
     ASPHALT_HELL: '#6b6b6b',

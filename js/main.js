@@ -9,6 +9,8 @@ ctx.imageSmoothingEnabled = false; // keine Glättung, scharfe Pixel
 
 Input.start();
 Road.start();
+Sprites.start();  // Pixelraster in Bilder umwandeln
+Scenery.start();  // Bäume, Felsen usw. auf die Strecke verteilen
 Render.start(ctx);
 
 let letzteZeit = null;
