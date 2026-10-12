@@ -21,33 +21,77 @@ const CONFIG = {
   STRASSE_HALBE_BREITE: 4,  // halbe Strassenbreite in Metern (4 = 8 m breite Strasse)
   BANKETT_BREITE: 0.8,      // Breite des Schotter-/Erdbanketts links und rechts neben dem Asphalt in Metern
   MITTELLINIE_BREITE: 0.15, // Breite der gestrichelten Mittellinie in Metern
+  MITTELLINIE_AB_PIXEL: 10, // Mittellinie erst zeichnen, wo die Strasse im Bild mindestens so viele Pixel breit ist (sonst weisse Punkte am Horizont)
   STUECK_LAENGE: 2,         // Länge eines Strassenstücks in Metern
   STREIFEN_LAENGE: 4,       // wie viele Strassenstücke eine Farbe behalten, bevor sie wechselt (Tempo-Streifen)
 
-  // --- Kurven und Hügel ---
+  // --- Kurven und Hügel: Strecke und Darstellung ---
   // Die Strecke selbst (Abschnitte mit Länge, Kurve, Höhe) steht in js/track.js.
-  UEBERGANG: 60,            // auf so vielen Metern gehen zwei Abschnitte weich ineinander über (Kurve und Steigung); grösser = sanfter
-  // Grenztempo pro Kurvenstärke in km/h (Stelle 0 = gerade, Stelle 1 = Stärke 1 ... Stelle 6 = Haarnadel).
-  // Bis zu diesem Tempo kommt man mit kräftigem Lenken noch gut durch die Kurve.
-  // Etwa ein Viertel schneller, und man wird trotz vollem Einschlag nach aussen getragen.
-  // Aus dieser Tabelle wird auch berechnet, wie eng die Kurve im Bild aussieht.
-  KURVEN_GRENZTEMPO: [0, 200, 155, 120, 95, 75, 60],
-  // Fliehkraft: seitliches Abdriften in m/s = Kurvenwert x Tempo im Quadrat x dieser Faktor.
-  // (Kurvenwert = 1 / Grenztempo, also: enge Kurve = grosser Wert.)
-  // 0.1 heisst: Beim Grenztempo braucht man etwa 80 % des vollen Lenkeinschlags,
-  // um die Linie zu halten. Grösser = Kurven tragen stärker nach aussen.
-  FLIEHKRAFT_FAKTOR: 0.1,
-  // Wie stark sich die Strasse im Bild biegt. Grösser = Kurven sehen enger aus.
-  // Mit 12 hat eine Kurve der Stärke 1 einen Radius von ca. 260 m, Stärke 3 ca. 90 m, Stärke 6 ca. 25 m.
-  KURVEN_OPTIK: 12,
-  // Steigung: So viel m/s pro Sekunde wird das Auto bei 100 % Steigung langsamer
-  // (bergab entsprechend schneller). Bei 10 % Steigung also 0.6 m/s pro Sekunde.
-  // Zum Vergleich: Im 4. Gang beschleunigt das Auto mit 2.6. Grösser = Berge spürbarer.
-  HANGABTRIEB: 6,
+  // Zwei Abschnitte gehen weich ineinander über (Kurve und Steigung). Die Überblendung
+  // dauert diesen Anteil der Länge des kürzeren Abschnitts (0.2 = 20 %).
+  // Kleiner = Kurven setzen schärfer ein, grösser = sanfter, aber enge Kurven wirken weicher.
+  UEBERGANG_ANTEIL: 0.2,
+  // Wie stark sich die Strasse im Bild biegt (Verstärkung nur für die Optik, nicht fürs Fahren).
+  // Grösser = Kurven sehen enger aus. Mit 20 hat eine Kurve der Stärke 1 einen Radius
+  // von ca. 140 m, Stärke 3 ca. 55 m, Stärke 6 ca. 12 m. Eine Kehre schwenkt die Strasse
+  // damit schon auf 40 m Entfernung um mehr als eine halbe Bildbreite zur Seite.
+  KURVEN_OPTIK: 20,
+  // Höhen im Bild verstärken (nur Optik, nicht fürs Fahren). 1 = echte Höhe.
+  // Mit 1.6 sieht eine 12-m-Kuppe aus wie eine 19-m-Kuppe: Die Strasse dahinter
+  // verschwindet deutlich, und Gefälle sieht man klar. Zu gross (ab ca. 2) = vor
+  // steilen Anstiegen steht eine grüne Wand, die die Berge verdeckt.
+  HOEHEN_OPTIK: 1.6,
+  // Horizont und Berge kippen leicht mit der Steigung der Strasse vor dem Auto:
+  // bergauf rutscht der Horizont nach unten (man "schaut hinauf"), bergab nach oben.
+  HORIZONT_VORSCHAU: 25,     // über so viele Meter vor dem Auto wird die Steigung gemessen
+  HORIZONT_NEIGUNG: 70,      // so viele Pixel Verschiebung pro 100 % Steigung (bei 10 % also 7 Pixel)
+  HORIZONT_MAX_VERSATZ: 10,  // mehr als so viele Pixel verschiebt sich der Horizont nie
+  HORIZONT_TRAEGHEIT: 0.3,   // so viele Sekunden braucht der Horizont für ca. zwei Drittel des Weges (Glättung)
   // Berge im Hintergrund wandern in Kurven seitlich (Pixel pro Bogenmass Drehung).
   // Die vorderen Berge etwas schneller, damit es nach Tiefe aussieht.
   BERG_PARALLAX_HINTEN: 40,
   BERG_PARALLAX_VORNE: 70,
+
+  // --- Kurven: Fahrphysik (Grenztempo und Untersteuern) ---
+  // Grenztempo pro Kurvenstärke in km/h: das schnellste Tempo, mit dem man die Kurve
+  // noch sauber in der Spur fahren kann. Stelle 0 = gerade (kein Limit), Stelle 1 = Stärke 1
+  // ... Stelle 6 = Haarnadel. Zwischenwerte (z. B. 4.5 beim Überblenden) werden gemischt.
+  // Aus dieser Tabelle wird auch berechnet, wie eng die Kurve im Bild aussieht.
+  KURVEN_GRENZTEMPO: [0, 190, 150, 120, 95, 75, 55],
+  // "Auslastung" = Tempo / Grenztempo. 1.0 = genau am Limit.
+  // Bis 1.0 trägt die Fliehkraft das Auto nach aussen, man kann es aber weglenken.
+  // Dieser Wert sagt, wie viel Lenkeinschlag man genau am Grenztempo braucht (0.8 = 80 %).
+  // Grösser = man muss in Kurven mehr lenken.
+  KURVEN_LENKBEDARF: 0.8,
+  // Über 1.0 untersteuert das Auto: Die Reifen sind am Limit, stärker lenken hilft nicht mehr.
+  // Das Auto rutscht trotz vollem Einschlag nach aussen, und zwar mit diesem Tempo (m/s)
+  // bei Auslastung 2.0 (doppeltes Grenztempo). Es wächst mit dem Quadrat der Überschreitung:
+  // 10 % zu schnell = 0.4 m/s (kaum), 20 % = 1.6 m/s (man kommt an den Rand), 50 % = 10 m/s (sofort im Gras).
+  UNTERSTEUERN_KRAFT: 40,
+  // Beim Untersteuern radieren die Reifen und kosten Tempo: so viele km/h pro Sekunde
+  // bei Auslastung 2.0. Wächst gleichmässig mit der Überschreitung (bei 1.5 also die Hälfte).
+  UNTERSTEUERN_TEMPOVERLUST: 50,
+  // Starkes Lenken kostet leicht Tempo: so viele km/h pro Sekunde bei vollem Einschlag
+  // (halber Einschlag = ein Viertel davon). 0 = Lenken bremst gar nicht.
+  LENK_TEMPOVERLUST: 6,
+
+  // --- Steigung: Fahrphysik ---
+  // Antrieb bergauf schwächer, bergab stärker. Zahl = Prozent Antrieb pro Prozent Steigung.
+  // 3.5 heisst: bei 10 % Steigung 35 % weniger Antrieb, bei 4 % nur 14 % weniger.
+  ANTRIEB_BERGAUF: 3.5,
+  ANTRIEB_BERGAB: 3,        // bei 10 % Gefälle 30 % mehr Antrieb
+  // Schwerkraft: So viel m/s pro Sekunde wird das Auto bei 100 % Steigung langsamer
+  // (bergab entsprechend schneller). 9.81 = echte Erdanziehung, bei 10 % also ca. 1 m/s pro Sekunde.
+  // Wirkt auch ohne Gas: Bergab rollt man weiter, bergauf ist man schnell langsam.
+  HANGABTRIEB: 9.81,
+  // Bergab darf das Auto über sein Höchsttempo kommen, der Motor dreht dann in den roten Bereich.
+  // So viel mehr ist höchstens erlaubt (0.08 = 8 %, also 216 statt 200 km/h) ...
+  BERGAB_UEBERTEMPO: 0.08,
+  // ... und zwar voll ab diesem Gefälle (0.08 = 8 %). Bei halb so viel Gefälle halb so viel.
+  BERGAB_UEBERTEMPO_AB: 0.08,
+  // Ist das Auto schneller als erlaubt (z. B. wenn das Gefälle aufhört), bremst der Motor
+  // mit dieser Stärke (m/s pro Sekunde) aufs erlaubte Tempo zurück.
+  MOTORBREMSE: 2,
 
   // --- Auto: Motor und Getriebe (automatische 5-Gang-Schaltung) ---
   // Höchsttempo pro Gang in km/h: Bei diesem Tempo dreht der Motor im jeweiligen

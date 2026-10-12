@@ -80,6 +80,11 @@ const Render = {
   hoehenVorne: null,
   bergVersatzHinten: 0,
   bergVersatzVorne: 0,
+  // Horizont: kippt leicht mit der Steigung vor dem Auto (geglättet).
+  // horizontVersatz ist der genaue Wert, horizont die gerundete Bildzeile,
+  // auf der Himmel, Berge und Strasse in diesem Bild zusammentreffen.
+  horizontVersatz: 0,
+  horizont: CONFIG.HORIZONT_Y,
 
   start(ctx) {
     this.ctx = ctx;
@@ -108,6 +113,17 @@ const Render = {
     const b = CONFIG.BREITE;
     this.bergVersatzHinten = ((this.bergVersatzHinten % b) + b) % b;
     this.bergVersatzVorne = ((this.bergVersatzVorne % b) + b) % b;
+
+    // Horizont mit der Steigung kippen. Gemessen wird die Steigung über die
+    // nächsten Meter vor dem Auto, damit man eine Steigung schon kommen sieht.
+    // Bergauf rutscht der Horizont nach unten, als würde man hinaufschauen.
+    const voraus = CONFIG.HORIZONT_VORSCHAU;
+    const steigungVoraus = (Road.hoeheBei(Car.z + voraus) - Road.hoeheBei(Car.z)) / voraus;
+    const max = CONFIG.HORIZONT_MAX_VERSATZ;
+    const ziel = Math.min(Math.max(steigungVoraus * CONFIG.HORIZONT_NEIGUNG, -max), max);
+    this.horizontVersatz += (ziel - this.horizontVersatz) * (1 - Math.exp(-dt / CONFIG.HORIZONT_TRAEGHEIT));
+    // Auf ganze Pixel runden, sonst gibt es zwischen Bergen und Wiese eine Lücke
+    this.horizont = CONFIG.HORIZONT_Y + Math.round(this.horizontVersatz);
   },
 
   // fps: Bilder pro Sekunde, nur für die Debug-Anzeige
@@ -130,8 +146,8 @@ const Render = {
       const r = Math.round(f.HIMMEL_OBEN[0] + (f.HIMMEL_UNTEN[0] - f.HIMMEL_OBEN[0]) * t);
       const g = Math.round(f.HIMMEL_OBEN[1] + (f.HIMMEL_UNTEN[1] - f.HIMMEL_OBEN[1]) * t);
       const b = Math.round(f.HIMMEL_OBEN[2] + (f.HIMMEL_UNTEN[2] - f.HIMMEL_OBEN[2]) * t);
-      const y1 = Math.round(CONFIG.HORIZONT_Y * i / stufen);
-      const y2 = Math.round(CONFIG.HORIZONT_Y * (i + 1) / stufen);
+      const y1 = Math.round(this.horizont * i / stufen);
+      const y2 = Math.round(this.horizont * (i + 1) / stufen);
       this.ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       this.ctx.fillRect(0, y1, CONFIG.BREITE, y2 - y1);
     }
@@ -160,23 +176,26 @@ const Render = {
     const v = Math.round(versatz);
     for (let x = 0; x < b; x++) {
       const hoehe = hoehen[(((x - v) % b) + b) % b];
-      this.ctx.fillRect(x, CONFIG.HORIZONT_Y - hoehe, 1, hoehe);
+      this.ctx.fillRect(x, this.horizont - hoehe, 1, hoehe);
     }
   },
 
   strasse() {
     const ctx = this.ctx;
     const f = CONFIG.FARBEN;
+    const horizont = this.horizont;
 
     // Grund-Gras bis zum Horizont, damit ganz hinten keine Lücke bleibt
     ctx.fillStyle = f.GRAS_DUNKEL;
-    ctx.fillRect(0, CONFIG.HORIZONT_Y, CONFIG.BREITE, CONFIG.HOEHE - CONFIG.HORIZONT_Y);
+    ctx.fillRect(0, horizont, CONFIG.BREITE, CONFIG.HOEHE - horizont);
 
     const L = CONFIG.STUECK_LAENGE;
     const kameraZ = Car.z;
     const kameraX = Car.x;
-    // Die Kamera fährt mit der Strasse hoch und runter
-    const bodenHoehe = Road.hoeheBei(kameraZ);
+    // Höhen werden fürs Bild verstärkt (HOEHEN_OPTIK), damit Hügel gut sichtbar sind.
+    // Die Kamera fährt mit der (verstärkten) Strasse hoch und runter.
+    const hoehenOptik = CONFIG.HOEHEN_OPTIK;
+    const bodenHoehe = Road.hoeheBei(kameraZ) * hoehenOptik;
     const kameraY = bodenHoehe + CONFIG.KAMERA_HOEHE;
     const ersterIndex = Math.floor(kameraZ / L);
 
@@ -210,17 +229,37 @@ const Render = {
       versatz += neigung * strecke + stueck.kruemmung * strecke * strecke / 2;
       neigung += stueck.kruemmung * strecke;
 
-      const hoeheVorne = n === 0 ? bodenHoehe : stueck.y;
-      const hoeheHinten = Road.stueck(index + 1).y;
-      const nah = Road.projiziere(versatzVorne, hoeheVorne, Math.max(abstandVorne, 0.1), kameraX, kameraY);
-      const fern = Road.projiziere(versatz, hoeheHinten, abstandHinten, kameraX, kameraY);
+      const hoeheVorne = n === 0 ? bodenHoehe : stueck.y * hoehenOptik;
+      const hoeheHinten = Road.stueck(index + 1).y * hoehenOptik;
+      const nah = Road.projiziere(versatzVorne, hoeheVorne, Math.max(abstandVorne, 0.1), kameraX, kameraY, horizont);
+      const fern = Road.projiziere(versatz, hoeheHinten, abstandHinten, kameraX, kameraY, horizont);
 
       const oben = Math.max(Math.round(fern.y), 0);
       const unten = Math.min(Math.round(nah.y), maxY);
-      if (unten <= oben) continue; // kleiner als ein Pixel, verdeckt oder Rückseite einer Kuppe
-
-      this.stueckZeichnen(stueck, nah, fern, oben, unten);
-      maxY = oben;
+      if (unten > oben) {
+        this.stueckZeichnen(stueck, nah, fern, oben, unten);
+        // Ragt das nahe Ende noch ein Stück in die schon gezeichnete Zeile
+        // darunter, auch diesen Rest nachtragen. Sonst bleibt dort, wo die
+        // Strasse fast waagrecht läuft, eine Lücke von ein, zwei Pixeln.
+        if (unten === maxY && maxY < CONFIG.HOEHE && nah.y > unten) {
+          const x1 = this.mitteBei(nah, fern, unten);
+          const x2 = this.mitteBei(nah, fern, Math.min(nah.y, unten + 1));
+          this.asphaltNachtragen(stueck, Math.min(x1, x2), Math.max(x1, x2), nah.massstab, unten);
+        }
+        maxY = oben;
+      } else if (oben === maxY && maxY < CONFIG.HOEHE) {
+        // Weit hinten ist ein Stück oft weniger als ein Pixel hoch. Früher
+        // fiel es dann einfach weg. In einer Kurve läuft die ferne Strasse
+        // aber fast waagrecht durchs Bild: Viele solche Stücke liegen auf
+        // derselben Bildzeile nebeneinander. Ohne sie blieben nur einzelne,
+        // abgerissene Striche übrig ("schwebende" graue Striche am Horizont).
+        // Darum tragen wir sie in die oberste schon gezeichnete Zeile nach.
+        // Liegt das nahe Ende tiefer als diese Zeile, ist es hinter einer
+        // Kuppe verdeckt. Dann zählt nur das ferne Ende.
+        const vonX = Math.round(nah.y) === maxY ? nah.x : fern.x;
+        this.asphaltNachtragen(stueck, Math.min(vonX, fern.x), Math.max(vonX, fern.x), fern.massstab, maxY);
+      }
+      // Sonst: liegt hinter einer Kuppe und ist verdeckt.
     }
   },
 
@@ -233,20 +272,50 @@ const Render = {
     const linie = CONFIG.MITTELLINIE_BREITE / 2;
 
     for (let y = oben; y < unten; y++) {
-      // 0 = fern, 1 = nah. Begrenzt, weil bei ganz flachen Stücken sonst Unsinn herauskommt
-      const t = Math.min(Math.max((y + 0.5 - fern.y) / (nah.y - fern.y), 0), 1);
-      const mitte = fern.x + (nah.x - fern.x) * t;
-      const m = fern.massstab + (nah.massstab - fern.massstab) * t;
+      const m = fern.massstab + (nah.massstab - fern.massstab) * this.anteilBei(nah, fern, y + 0.5);
+      // Wo liegt die Strassenmitte am oberen und am unteren Rand dieser
+      // Bildzeile? In engen Kurven können das mehrere Pixel Unterschied sein.
+      // Wir zeichnen die Zeile über die ganze Spanne, sonst entstehen Lücken
+      // und Treppen zwischen den Zeilen.
+      const m1 = this.mitteBei(nah, fern, y);
+      const m2 = this.mitteBei(nah, fern, y + 1);
+      const links = Math.min(m1, m2);
+      const rechts = Math.max(m1, m2);
 
       this.zeile(0, CONFIG.BREITE, y, stueck.hell ? f.GRAS_HELL : f.GRAS_DUNKEL);
       // Bankett zuerst über die ganze Breite, dann den Asphalt darüber.
       // Übrig bleibt links und rechts ein schmaler Erdstreifen.
-      this.zeile(mitte - bankett * m, mitte + bankett * m, y, stueck.hell ? f.BANKETT_HELL : f.BANKETT_DUNKEL);
-      this.zeile(mitte - strasse * m, mitte + strasse * m, y, stueck.hell ? f.ASPHALT_HELL : f.ASPHALT_DUNKEL);
-      if (stueck.hell) {
-        this.zeile(mitte - linie * m, mitte + linie * m, y, f.MITTELLINIE, true);
+      this.zeile(links - bankett * m, rechts + bankett * m, y, stueck.hell ? f.BANKETT_HELL : f.BANKETT_DUNKEL);
+      this.zeile(links - strasse * m, rechts + strasse * m, y, stueck.hell ? f.ASPHALT_HELL : f.ASPHALT_DUNKEL);
+      // Mittellinie nur, wo die Strasse breit genug ist. Ganz hinten wäre
+      // sie nur noch ein einzelner weisser Punkt, der in der Luft zu hängen scheint.
+      if (stueck.hell && 2 * strasse * m >= CONFIG.MITTELLINIE_AB_PIXEL) {
+        this.zeile(links - linie * m, rechts + linie * m, y, f.MITTELLINIE, true);
       }
     }
+  },
+
+  // Wo zwischen fernem (0) und nahem Ende (1) eines Stücks liegt die
+  // Bildhöhe y? Begrenzt, weil bei ganz flachen Stücken sonst Unsinn herauskommt.
+  anteilBei(nah, fern, y) {
+    const hoehe = nah.y - fern.y;
+    return hoehe > 1e-6 ? Math.min(Math.max((y - fern.y) / hoehe, 0), 1) : 0;
+  },
+
+  // Strassenmitte (x im Bild) eines Stücks auf der Bildhöhe y
+  mitteBei(nah, fern, y) {
+    return fern.x + (nah.x - fern.x) * this.anteilBei(nah, fern, y);
+  },
+
+  // Einen Teil eines Stücks in eine schon gezeichnete Bildzeile y
+  // nachtragen, wenn die Strassenmitte dort von x1 bis x2 läuft. Nur der
+  // Asphalt, ohne Gras (das Gras der Zeile ist schon da und würde sonst die
+  // Strasse daneben übermalen). Das Bankett lassen wir weg: So weit hinten
+  // ist es schmaler als ein Pixel und gäbe nur braune Sprenkel im Asphalt.
+  asphaltNachtragen(stueck, x1, x2, m, y) {
+    const f = CONFIG.FARBEN;
+    const strasse = CONFIG.STRASSE_HALBE_BREITE;
+    this.zeile(x1 - strasse * m, x2 + strasse * m, y, stueck.hell ? f.ASPHALT_HELL : f.ASPHALT_DUNKEL);
   },
 
   // Eine waagrechte Linie auf ganze Pixel gerundet.
@@ -328,12 +397,15 @@ const Render = {
       kurveText = (kurve < 0 ? 'LINKS ' : 'RECHTS ') + Math.abs(kurve).toFixed(1);
     }
     const steigung = stueck.steigung * 100;
+    const auslastung = Math.round(Car.auslastung * 100);
     const zeilen = [
       'FPS ' + Math.round(fps),
       'STRECKE ' + Math.floor(Car.z) + ' / ' + Math.round(Road.laenge) + ' M',
       'ABSCHNITT ' + stueck.abschnitt.toUpperCase(),
       'KURVE ' + kurveText,
       'STEIGUNG ' + (steigung > 0.05 ? '+' : '') + steigung.toFixed(1) + ' %',
+      // Wie viel vom Grenztempo der Kurve genutzt wird. Über 100 % untersteuert das Auto.
+      'AUSLASTUNG ' + (auslastung > 0 ? auslastung + ' %' : '-'),
     ];
     let breite = 0;
     for (const z of zeilen) breite = Math.max(breite, this.textBreite(z));
