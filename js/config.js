@@ -49,8 +49,11 @@ const CONFIG = {
   HORIZONT_TRAEGHEIT: 0.3,   // so viele Sekunden braucht der Horizont für ca. zwei Drittel des Weges (Glättung)
   // Berge im Hintergrund wandern in Kurven seitlich (Pixel pro Bogenmass Drehung).
   // Die vorderen Berge etwas schneller, damit es nach Tiefe aussieht.
+  BERG_PARALLAX_FERN: 20,    // ganz ferne Dunst-Berge: wandern am langsamsten
   BERG_PARALLAX_HINTEN: 40,
   BERG_PARALLAX_VORNE: 70,
+  SCHNEE_AB: 52,             // Gipfel der hinteren Berge, die höher als so viele Pixel über dem Horizont sind, tragen Schnee
+  SCHNEE_MENGE: 0.7,         // wie weit der Schnee hinunterreicht: so viele Pixel Schnee pro Pixel Höhe über SCHNEE_AB
 
   // --- Kurven: Fahrphysik (Grenztempo und Untersteuern) ---
   // Grenztempo pro Kurvenstärke in km/h: das schnellste Tempo, mit dem man die Kurve
@@ -140,10 +143,42 @@ const CONFIG = {
   LEITPLANKE_VORLAUF: 16,        // so viele Meter vor der Kurve beginnt die Planke schon
   LEITPLANKE_NACHLAUF: 16,       // so viele Meter nach der Kurve hört sie erst auf
   LEITPLANKE_ABSTAND: 0.3,       // Meter zwischen Bankett und Leitplanke
-  // Kurvenschilder (gelb mit Pfeil) stehen vor Kurven an der Aussenseite
-  KURVENSCHILD_AB_STAERKE: 3,    // nur vor Kurven ab dieser Stärke
-  KURVENSCHILD_VORLAUF: 100,     // so viele Meter vor Kurvenbeginn steht das Schild
-  KURVENSCHILD_ABSTAND: 0.6,     // Meter zwischen Bankett und Schild (steht dort eine Leitplanke, kommt das Schild dahinter)
+  // Auf jeder Talseite (siehe "gelaende" in track.js) steht die Leitplanke immer.
+  // Die Planke wird wie die Strasse als durchgehendes Band gezeichnet:
+  PLANKE_UNTEN: 0.45,            // Unterkante des Plankenbalkens in Metern über dem Boden
+  PLANKE_OBEN: 0.8,              // Oberkante des Plankenbalkens in Metern über dem Boden
+  PFOSTEN_ALLE: 4,               // alle so viele Meter steht ein Pfosten unter der Planke
+  PFOSTEN_BREITE: 0.15,          // Breite eines Pfostens in Metern
+  // Temposchilder (rund, weiss mit rotem Rand) stehen vor Kurven, immer rechts der Strasse.
+  // Welche Zahl bei welcher Kurvenstärke: { Stärke: Zahl }. Fehlt eine Stärke, gibt es dort kein Schild.
+  TEMPOSCHILD_ZAHLEN: { 3: 80, 4: 60, 5: 50, 6: 40 },
+  TEMPOSCHILD_VORLAUF: 120,      // so viele Meter vor Kurvenbeginn steht das Schild
+  TEMPOSCHILD_ABSTAND: 0.6,      // Meter zwischen Bankett und Schild (steht dort eine Leitplanke, kommt das Schild dahinter)
+
+  // --- Gelände: Felswand und Abhang (Feld "gelaende" in track.js) ---
+  // Übergänge: Die Wand wächst über so viele Meter aus dem Boden (und sinkt am Ende
+  // wieder), der Abhang öffnet und schliesst sich genauso. Gemessen ab Abschnittsgrenze nach innen.
+  GELAENDE_UEBERGANG: 40,
+  // Felswand (Hangseite)
+  WAND_HOEHE: 28,                // Höhe der Felswand in Metern (28 = 3,5-mal die Strassenbreite von 8 m)
+  WAND_ABSTAND: 3,               // Breite des Geröllstreifens zwischen Bankett und Wand in Metern (Platz für ein paar Felsen und Büsche)
+  WAND_RAUSCHEN: 0.22,           // wie stark die Oberkante ausgefranst ist (0.22 = bis 22 % höher oder tiefer, 0 = ganz gerade)
+  WAND_SCHICHTEN: [0.14, 0.4, 0.68], // Grenzen der Gesteinsschichten als Anteil der Wandhöhe, von unten (3 Grenzen = 4 Bänder)
+  WAND_RISSE: 0.07,              // Anteil der Strassenstücke (2 m), an denen ein dunkler Riss in der Wand ist
+  WAND_GRAS: 0.05,               // Anteil der Strassenstücke mit einem Grasbüschel in der Wand
+  WAND_KOLLISION_AB: 0.15,       // erst ab diesem Anteil der vollen Höhe kracht es an der Wand (ganz am Anfang ist sie nur ein Erdhügel)
+  WAND_DETAIL_BIS: 220,          // weiter weg als so viele Meter: Wand nur noch einfarbig, ohne Schichten und Risse (spart Rechenzeit)
+  // Abhang (Talseite)
+  TAL_RANDSTREIFEN: 2.2,         // Meter Gras zwischen Bankett und Abbruchkante (dort stehen Leitplanke und Schilder)
+  TAL_TIEFE: 35,                 // so viele Meter tiefer als die Strasse liegt der Talboden
+  TAL_HANG_NEIGUNG: 0.3,         // Hang zwischen Kante und Talboden: so viele Meter hinunter pro Meter seitwärts. Steiler als ca. 0.35 sieht man ihn nicht mehr (die Kante verdeckt ihn)
+  TAL_BAUMFREI: 15,              // auf der Talseite stehen bis so viele Meter ab Strassenmitte keine hohen Bäume (auch beim Übergang)
+  TAL_OEFFNUNG: 15,              // beim Übergang: bei halb offenem Abhang ist die Kante noch so viele Meter weiter draussen (grösser = Kante kommt später heran)
+  TAL_BODEN_SICHT: 300,          // bis so weit (Meter) wird der Talboden gezeichnet, dahinter sieht man nur noch Dunst
+  TAL_FELDER_BIS: 140,           // bis so weit (Meter) sieht man auf dem Talboden Felder und Waldstücke, dahinter einfarbig (sonst flimmert es)
+  TAL_DUNST_ANTEIL: 0.6,         // so stark geht der Talboden ganz hinten in den Dunst über (0 = gar nicht, 1 = ganz)
+  TAL_BAUM_DICHTE: 0.3,          // Anteil der Strassenstücke mit einem kleinen Baum unten im Tal
+  TAL_PARALLAX: 90,              // Dunst-Landschaft im Tal wandert in Kurven seitlich (wie die Berge)
 
   // --- Landschaft: Darstellung ---
   OBJEKT_MIN_PIXEL: 2,           // Objekte, die im Bild weniger hoch wären, werden weggelassen (spart Arbeit, sieht man eh nicht)
@@ -194,8 +229,11 @@ const CONFIG = {
     HIMMEL_OBEN: [40, 90, 200],    // Himmelfarbe ganz oben (Rot, Grün, Blau)
     HIMMEL_UNTEN: [150, 200, 240], // Himmelfarbe am Horizont
     HIMMEL_STUFEN: 8,              // in wie vielen Farbstufen der Himmel verläuft (wenige = mehr Retro)
+    BERG_FERN: '#aab8cd',          // ganz ferne Berge im Dunst (hell, fast wie der Himmel)
     BERG_HINTEN: '#7d8ca8',        // weit entfernte Berge (bläulich, wirken dadurch weiter weg)
     BERG_VORNE: '#56607a',         // nähere Berge
+    SCHNEE: '#f4f7fb',             // Schneekappen auf den hohen Gipfeln
+    SCHNEE_SCHATTEN: '#c3d5ec',    // Schnee im Schatten (hellblau)
     WALDLINIE_HINTEN: '#365a48',   // Waldlinie am Horizont, hintere Baumreihe (etwas bläulich = weiter weg)
     WALDLINIE_VORNE: '#22412c',    // Waldlinie, vordere Baumreihe (dunkles Tannengrün)
     GRAS_HELL: '#3fa535',
@@ -205,6 +243,33 @@ const CONFIG = {
     BANKETT_HELL: '#8b6b47',       // Schotter/Erde am Strassenrand, zwei ähnliche Brauntöne
     BANKETT_DUNKEL: '#7e6040',     // (nur wenig Unterschied, damit es nicht nach Rennstrecke aussieht)
     MITTELLINIE: '#e8e8e8',
+    // Leitplanke (Band) und Pfosten
+    PLANKE_OBEN: '#b6bcc4',        // obere Hälfte des Balkens
+    PLANKE_UNTEN: '#878e97',       // untere Hälfte (im Schatten)
+    PLANKE_LICHT: '#eef1f4',       // helle Lichtlinie an der Oberkante
+    // Felswand: Geröllstreifen davor, Gesteinsschichten von unten nach oben, je [hell, dunkel]
+    GEROELL_HELL: '#877e72',
+    GEROELL_DUNKEL: '#7d7468',
+    WAND_SCHICHTEN: [
+      ['#5f564c', '#595047'],      // unten: dunkles, erdiges Graubraun
+      ['#7a7066', '#736960'],      // graubraun
+      ['#8b8173', '#83796c'],      // helles Braungrau
+      ['#6f6c69', '#696663'],      // oben: kühles Grau
+    ],
+    WAND_KANTE: '#a39b8e',         // helle Linie an der Oberkante der Wand
+    WAND_RISS: '#3a332d',          // dunkle Risse
+    WAND_GRAS: '#4c7a34',          // Grasbüschel in der Wand
+    WAND_GRAS_HELL: '#77a347',
+    // Abhang und Tal
+    TAL_KANTE: '#5c4b33',          // Erde an der Abbruchkante
+    TAL_HANG_HELL: '#3d6136',      // Hang hinter der Kante (Wald im Schatten), helle Streifen ...
+    TAL_HANG_DUNKEL: '#35562f',    // ... und dunkle Streifen
+    // Talboden: Flickenteppich aus Wiesen und Waldstücken, in der Ferne leicht im Dunst
+    TAL_FELDER: ['#4b7d58', '#5b8d60', '#3a6950'], // Wiese, helle Wiese, Wald (bläulich, weil weit unten im Dunst)
+    // Dunst-Landschaft weit unten im Tal: Streifen von oben (Horizont, weit weg, hell)
+    // nach unten (näher, dunkler). Der Talboden wird in der Ferne zur letzten Farbe hin aufgehellt.
+    TAL_DUNST: ['#bccad6', '#a7b9c7', '#93aab5', '#809da1', '#6f918d'],
+    TAL_DUNST_BAUM: '#5a7c78',     // kleine Baumwipfel im Dunst
     AUTO_KAROSSERIE: '#e0e0e0',
     AUTO_DACH: '#c8c8c8',
     AUTO_STREIFEN: '#1f4fb0',

@@ -48,6 +48,7 @@ const Road = {
         hoehe: a.hoehe === 'auto' ? 0 : (a.hoehe || 0),
         umgebung: a.umgebung || 'wiese', // Landschaft am Rand, siehe scenery.js
         dichte: a.dichte || 1,           // mehr (z. B. 1.5) oder weniger (0.5) Objekte als normal
+        gelaende: a.gelaende || 'keins', // Felswand / Abhang, siehe scenery.js
       };
     });
 

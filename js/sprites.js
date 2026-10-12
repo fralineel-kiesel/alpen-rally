@@ -44,6 +44,11 @@ const SPRITE_FARBEN = {
   X: '#e9a29b',  // rosa (Kuhnase, Euter)
   I: '#d8ccb0',  // Horn
   J: '#dfe8f2',  // Wolke im Schatten
+  // Kleinbuchstaben: weitere Farben
+  r: '#c9312a',  // Rot (Rand der Temposchilder)
+  a: '#466a62',  // kleine Bäume tief unten im Tal (bläulich, im Dunst) ...
+  b: '#557a70',
+  c: '#67897e',
 };
 
 // Alle Sprites. Pro Sprite:
@@ -60,10 +65,14 @@ const SPRITE_FARBEN = {
 //              'innen' = die strassenseitige Kante steht auf dem Platz, das Bild
 //              geht nach aussen (Leitplanke, Zaun: so laufen sie dem Rand entlang)
 //   spiegeln:  true = darf zufällig gespiegelt werden (mehr Abwechslung)
+//   baum:      true = hoher Baum. Bäume stehen nie zwischen Strasse und Felswand
+//              und nie nahe am Abhang (siehe scenery.js).
+//   unsichtbar: true = wird nicht als Bild gezeichnet, zählt aber beim
+//              Zusammenstoss (Leitplanke: wird als Band gezeichnet, Wand: als Felswand)
 //   varianten: ein oder mehrere Pixelraster (zufällig ausgewählt)
 const SPRITE_DATEN = {
   fichte_gross: {
-    hoehe: 10, fest: true, kollision: 1.2, anker: 'mitte', spiegeln: true,
+    hoehe: 10, fest: true, kollision: 1.2, anker: 'mitte', spiegeln: true, baum: true,
     varianten: [
       [
         '........C........',
@@ -129,7 +138,7 @@ const SPRITE_DATEN = {
   },
 
   fichte_klein: {
-    hoehe: 5, fest: true, kollision: 0.9, anker: 'mitte', spiegeln: true,
+    hoehe: 5, fest: true, kollision: 0.9, anker: 'mitte', spiegeln: true, baum: true,
     varianten: [
       [
         '.....C.....',
@@ -167,7 +176,7 @@ const SPRITE_DATEN = {
   },
 
   laubbaum: {
-    hoehe: 7.5, fest: true, kollision: 1.0, anker: 'mitte', spiegeln: true,
+    hoehe: 7.5, fest: true, kollision: 1.0, anker: 'mitte', spiegeln: true, baum: true,
     varianten: [
       [
         '........H........',
@@ -276,51 +285,34 @@ const SPRITE_DATEN = {
     ],
   },
 
-  // Ein 4 m langes Stück Leitplanke mit zwei Pfosten. Alle 2 m steht ein
-  // Stück (laenge: 2), die Bilder überlappen sich also zur Hälfte. So
-  // ergeben sie auch nah am Auto eine durchgehende Planke ohne Lücken.
+  // Leitplanke: Sie wird seit Meilenstein 3.5 nicht mehr aus einzelnen Bildern
+  // zusammengesetzt, sondern wie die Strasse als durchgehendes Band gezeichnet
+  // (siehe render.js). Früher stand hier ein 4 m langes Planken-Bild: In Kurven
+  // gab das Treppenstufen, weil jedes Bild flach zur Kamera schaut und nicht
+  // der Strasse folgen kann. Geblieben ist ein Eintrag pro 2 m für den
+  // Zusammenstoss, und das Raster ist jetzt der dunkle Pfosten, der alle
+  // PFOSTEN_ALLE Meter unter dem Band steht.
   leitplanke: {
-    hoehe: 0.8, fest: true, kollision: 0.5, laenge: 2, anker: 'innen', spiegeln: false,
+    hoehe: 0.8, fest: true, kollision: 0.5, laenge: 2, anker: 'innen', spiegeln: false, unsichtbar: true,
     varianten: [
       [
-        'PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP',
-        'QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ',
-        'PPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPPP',
-        'RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR',
-        '.QR..................QR.................',
-        '.QR..................QR.................',
-        '.QR..................QR.................',
-        '.QR..................QR.................',
+        'RK',
+        'RK',
+        'RK',
+        'RK',
+        'RK',
+        'RK',
+        'RK',
+        'KK',
       ],
     ],
   },
 
-  // Gelbe Kurventafel mit schwarzem Doppelpfeil. Gezeichnet ist der Pfeil
-  // nach LINKS; für Rechtskurven wird das Bild gespiegelt.
-  kurvenschild: {
-    hoehe: 2.0, fest: true, kollision: 0.6, anker: 'mitte', spiegeln: false,
-    varianten: [
-      [
-        'ZZZZZZZZZZZZZZZZ',
-        'ZYYYYZZYYYYZZYYZ',
-        'ZYYYZZYYYYZZYYYZ',
-        'ZYYZZYYYYZZYYYYZ',
-        'ZYZZYYYYZZYYYYYZ',
-        'ZYZZYYYYZZYYYYYZ',
-        'ZYYZZYYYYZZYYYYZ',
-        'ZYYYZZYYYYZZYYYZ',
-        'ZYYYYZZYYYYZZYYZ',
-        'ZZZZZZZZZZZZZZZZ',
-        '.......QR.......',
-        '.......QR.......',
-        '.......QR.......',
-        '.......QR.......',
-        '.......QR.......',
-        '.......QR.......',
-        '.......QR.......',
-        '.......QR.......',
-      ],
-    ],
+  // Felswand: nur für den Zusammenstoss (ein Eintrag pro 2 m). Gezeichnet
+  // wird die Wand als durchgehende Fläche in render.js.
+  wand: {
+    hoehe: 1, fest: true, kollision: 1.0, laenge: 2, anker: 'innen', spiegeln: false, unsichtbar: true,
+    varianten: [['K']],
   },
 
   // Wegweiser: Holzpfosten mit zwei leeren Richtungstafeln (keine echten Ortsnamen,
@@ -414,6 +406,93 @@ const SPRITE_DATEN = {
     ],
   },
 };
+
+// Kleine Fichte tief unten im Tal (wird in render.js auf den Talboden
+// gestellt, nicht von scenery.js verteilt). Bläulich, weil sie im Dunst steht.
+SPRITE_DATEN.tal_baum = {
+  hoehe: 9, fest: false, kollision: 0, anker: 'mitte', spiegeln: true, unsichtbar: true,
+  varianten: [
+    [
+      '...c...',
+      '..cba..',
+      '...b...',
+      '..cba..',
+      '.cbbaa.',
+      '..cba..',
+      '.cbbaa.',
+      'cbbaaaa',
+      '...a...',
+    ],
+  ],
+};
+
+// --- Temposchilder ---
+// Kleine Pixelschrift für die Zahlen auf den Schildern: jede Ziffer 3 Pixel
+// breit und 5 hoch. "1" = Pixel an (schwarz), "0" = aus (weiss bleibt).
+const SCHILD_ZIFFERN = {
+  '0': ['111', '101', '101', '101', '111'],
+  '1': ['010', '110', '010', '010', '111'],
+  '2': ['111', '001', '111', '100', '111'],
+  '3': ['111', '001', '011', '001', '111'],
+  '4': ['101', '101', '111', '001', '001'],
+  '5': ['111', '100', '111', '001', '111'],
+  '6': ['111', '100', '111', '101', '111'],
+  '7': ['111', '001', '010', '010', '010'],
+  '8': ['111', '101', '111', '101', '111'],
+  '9': ['111', '101', '111', '001', '111'],
+};
+
+// Runde weisse Scheibe mit rotem Rand auf einem Pfosten. Die Zahl wird beim
+// Laden in die Mitte gestempelt (Zeilen 4 bis 8, ab Spalte 3).
+const TEMPOSCHILD_RASTER = [
+  '....rrrrr....',
+  '..rrrrrrrrr..',
+  '.rrrWWWWWrrr.',
+  '.rrWWWWWWWrr.',
+  'rrWWWWWWWWWrr',
+  'rrWWWWWWWWWrr',
+  'rrWWWWWWWWWrr',
+  'rrWWWWWWWWWrr',
+  'rrWWWWWWWWWrr',
+  '.rrWWWWWWWrr.',
+  '.rrrWWWWWrrr.',
+  '..rrrrrrrrr..',
+  '....rrrrr....',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '.....QR......',
+  '....SQRS.....',
+];
+
+// Für jede Zahl aus TEMPOSCHILD_ZAHLEN (config.js) ein eigenes Sprite anlegen,
+// z. B. "tempo60". So muss man für eine neue Zahl kein Bild zeichnen.
+for (const staerke in CONFIG.TEMPOSCHILD_ZAHLEN) {
+  const zahl = String(CONFIG.TEMPOSCHILD_ZAHLEN[staerke]);
+  const raster = TEMPOSCHILD_RASTER.map((zeile) => zeile.split(''));
+  // Ziffern mittig einsetzen: jede Ziffer 3 breit, 1 Pixel Abstand dazwischen
+  const breite = zahl.length * 4 - 1;
+  const links = Math.floor((13 - breite) / 2);
+  for (let n = 0; n < zahl.length; n++) {
+    const ziffer = SCHILD_ZIFFERN[zahl[n]] || SCHILD_ZIFFERN['0'];
+    for (let zy = 0; zy < 5; zy++) {
+      for (let zx = 0; zx < 3; zx++) {
+        if (ziffer[zy][zx] === '1') raster[4 + zy][links + n * 4 + zx] = 'Z';
+      }
+    }
+  }
+  SPRITE_DATEN['tempo' + zahl] = {
+    hoehe: 2.5, fest: true, kollision: 0.6, anker: 'mitte', spiegeln: false,
+    varianten: [raster.map((zeile) => zeile.join(''))],
+  };
+}
 
 // Wolken für den Himmel (kein Teil der Strasse, siehe render.js).
 // Nur Weiss und ein heller Blauschatten unten.
