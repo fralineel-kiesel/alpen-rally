@@ -142,13 +142,53 @@ const CONFIG = {
   LEITPLANKE_GEFAELLE: 0.04,     // "bergab" heisst: mindestens so viel Gefälle (0.04 = 4 %)
   LEITPLANKE_VORLAUF: 16,        // so viele Meter vor der Kurve beginnt die Planke schon
   LEITPLANKE_NACHLAUF: 16,       // so viele Meter nach der Kurve hört sie erst auf
-  LEITPLANKE_ABSTAND: 0.3,       // Meter zwischen Bankett und Leitplanke
   // Auf jeder Talseite (siehe "gelaende" in track.js) steht die Leitplanke immer.
-  // Die Planke wird wie die Strasse als durchgehendes Band gezeichnet:
-  PLANKE_UNTEN: 0.45,            // Unterkante des Plankenbalkens in Metern über dem Boden
-  PLANKE_OBEN: 0.8,              // Oberkante des Plankenbalkens in Metern über dem Boden
-  PFOSTEN_ALLE: 4,               // alle so viele Meter steht ein Pfosten unter der Planke
-  PFOSTEN_BREITE: 0.15,          // Breite eines Pfostens in Metern
+  // Aussehen und Abstand der Leitplanke: siehe BAENDER weiter unten.
+
+  // --- Bänder: Leitplanke und Holzzaun (später auch das Rally-Absperrband) ---
+  // Ein Band wird wie die Strasse gezeichnet: pro Strassenstück (2 m) ein Viereck von seinem
+  // nahen bis zu seinem fernen Ende. Das nächste Stück beginnt genau an diesen Ecken, darum
+  // läuft das Band auch in Kurven ohne Stufen oder Spalten durch. Die Pfosten sind kleine
+  // Bilder (sprites.js); ihre Lage wird aus denselben Bildpunkten berechnet wie das Band,
+  // damit sie genau darunter sitzen. Alle Bänder benutzen dieselbe Zeichenfunktion
+  // (bandZeichnen in render.js), nur mit diesen Werten:
+  //   abstand:       Meter zwischen Bankett und der strassenseitigen Kante des Bands
+  //   latten:        waagrechte Balken/Latten, je von "unten" bis "oben" in Metern über dem Boden.
+  //                  Obere Hälfte in "hell", untere in "dunkel", "licht" = helle Linie an der
+  //                  Oberkante (null = keine). Weit hinten bleibt jede Latte mindestens 1 Pixel hoch.
+  //   pfostenAlle:   alle so viele Meter steht ein Pfosten (gezählt ab Streckenbeginn)
+  //   pfostenBreite: Breite eines Pfostens in Metern
+  //   pfostenHoehe:  Höhe eines Pfostens in Metern (höher als die oberste Latte = Spitze schaut heraus)
+  //   pfostenBild:   Name des Pfosten-Bilds in sprites.js
+  //   fest:          true = harter Aufprall wie an einem Fels, false = man fährt durch (nur Deko)
+  BAENDER: {
+    // Silbergraue Leitplanke an engen Kurven und auf der Talseite
+    leitplanke: {
+      abstand: 0.3,
+      latten: [
+        { unten: 0.45, oben: 0.8, hell: '#b6bcc4', dunkel: '#878e97', licht: '#eef1f4' },
+      ],
+      pfostenAlle: 4,
+      pfostenBreite: 0.15,
+      pfostenHoehe: 0.8,
+      pfostenBild: 'leitplanke',
+      fest: true,
+    },
+    // Holzzaun (Weidezaun) in den "wiese"-Abschnitten. Etwa so hoch wie das Auto im Bild.
+    zaun: {
+      abstand: 2,
+      latten: [
+        { unten: 0.3, oben: 0.45, hell: '#8b6842', dunkel: '#5f412b', licht: null },  // untere Latte
+        { unten: 0.75, oben: 0.9, hell: '#8b6842', dunkel: '#5f412b', licht: null },  // obere Latte
+      ],
+      pfostenAlle: 3,
+      pfostenBreite: 0.14,
+      pfostenHoehe: 1.0,
+      pfostenBild: 'zaun',
+      fest: true,
+    },
+  },
+
   // Temposchilder (rund, weiss mit rotem Rand) stehen vor Kurven, immer rechts der Strasse.
   // Welche Zahl bei welcher Kurvenstärke: { Stärke: Zahl }. Fehlt eine Stärke, gibt es dort kein Schild.
   TEMPOSCHILD_ZAHLEN: { 3: 80, 4: 60, 5: 50, 6: 40 },
@@ -243,10 +283,7 @@ const CONFIG = {
     BANKETT_HELL: '#8b6b47',       // Schotter/Erde am Strassenrand, zwei ähnliche Brauntöne
     BANKETT_DUNKEL: '#7e6040',     // (nur wenig Unterschied, damit es nicht nach Rennstrecke aussieht)
     MITTELLINIE: '#e8e8e8',
-    // Leitplanke (Band) und Pfosten
-    PLANKE_OBEN: '#b6bcc4',        // obere Hälfte des Balkens
-    PLANKE_UNTEN: '#878e97',       // untere Hälfte (im Schatten)
-    PLANKE_LICHT: '#eef1f4',       // helle Lichtlinie an der Oberkante
+    // (Farben von Leitplanke und Zaun stehen oben bei BAENDER)
     // Felswand: Geröllstreifen davor, Gesteinsschichten von unten nach oben, je [hell, dunkel]
     GEROELL_HELL: '#877e72',
     GEROELL_DUNKEL: '#7d7468',

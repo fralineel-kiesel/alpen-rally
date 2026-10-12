@@ -23,9 +23,9 @@
 //   alle:    im Schnitt steht alle so viele Meter ein Objekt (pro Seite).
 //            Kleiner = dichter.
 //   seite:   'beide' (wenn weggelassen), 'links' oder 'rechts'
-//   regelmaessig: true = kein Zufall, genau alle "alle" Meter ein Stück,
-//            immer mit dem Abstand "von" (für Zäune und Leitplanken, die
-//            durchgehend aussehen sollen)
+//   regelmaessig: true = kein Zufall, genau alle "alle" Meter ein Stück
+//            (für Bänder wie den Zaun, die durchgehend sein sollen). Der
+//            Abstand zur Strasse kommt dann aus BAENDER in config.js.
 //   objekte: welche Sprites (Namen aus sprites.js), mit Gewicht.
 //            { fichte_gross: 3, laubbaum: 1 } = dreimal so viele Fichten wie Laubbäume.
 const UMGEBUNGEN = {
@@ -41,7 +41,7 @@ const UMGEBUNGEN = {
   // Offene Weide: rechts ein Weidezaun, dahinter ab und zu Kühe.
   // Vereinzelt Bäume und Büsche, selten ein Wegweiser.
   wiese: [
-    { abstand: [2, 2],     alle: 2,   regelmaessig: true, seite: 'rechts', objekte: { zaun: 1 } },
+    {                      alle: 2,   regelmaessig: true, seite: 'rechts', objekte: { zaun: 1 } },
     { abstand: [4, 16],    alle: 45,  seite: 'rechts', objekte: { kuh: 1 } },
     { abstand: [1, 14],    alle: 40,  objekte: { laubbaum: 2, fichte_gross: 1, fichte_klein: 1 } },
     { abstand: [0.4, 9],   alle: 30,  objekte: { busch: 1 } },
@@ -90,7 +90,7 @@ const Scenery = {
     this.zufall = this.zufallsGenerator(CONFIG.SZENERIE_SEED);
     for (const s of Road.stuecke) {
       s.objekte = [];
-      s.planke = [false, false]; // steht hier eine Leitplanke? [links, rechts] (für render.js)
+      s.baender = [[], []]; // welche Bänder (Leitplanke, Zaun) hier stehen, [links, rechts] (für render.js)
     }
     this.anzahl = 0;
     this.gelaendeBerechnen();
@@ -275,7 +275,7 @@ const Scenery = {
       const seite = -Math.sign(a.kurve); // Rechtskurve (plus): aussen ist links (minus)
       const von = a.erstesStueck - Math.round(CONFIG.LEITPLANKE_VORLAUF / L);
       const bis = a.erstesStueck + a.anzahl + Math.round(CONFIG.LEITPLANKE_NACHLAUF / L);
-      this.reiheZiehen(von, bis, seite, 'leitplanke', CONFIG.LEITPLANKE_ABSTAND);
+      this.reiheZiehen(von, bis, seite, 'leitplanke', CONFIG.BAENDER.leitplanke.abstand);
     }
     // Talseite: überall, wo der Abhang auch nur ein bisschen offen ist
     // (am Anfang oder am Ende des Stücks)
@@ -283,20 +283,22 @@ const Scenery = {
       const naechstes = Road.stueck(s.index + 1);
       for (let nr = 0; nr < 2; nr++) {
         if (s.tal[nr] > 0 || naechstes.tal[nr] > 0) {
-          this.platzieren(s.index, nr === 0 ? -1 : 1, 'leitplanke', CONFIG.LEITPLANKE_ABSTAND);
+          this.platzieren(s.index, nr === 0 ? -1 : 1, 'leitplanke', CONFIG.BAENDER.leitplanke.abstand);
         }
       }
     }
   },
 
-  // Zäune und Leitplanken aus den Umgebungen (Reihen mit regelmaessig: true)
+  // Zäune aus den Umgebungen (Reihen mit regelmaessig: true).
+  // Bänder (Zaun) stehen im Abstand aus BAENDER, sonst gilt "abstand" der Reihe.
   regelmaessigeReihen() {
     for (const a of Road.abschnitte) {
       for (const reihe of UMGEBUNGEN[this.umgebungVon(a)]) {
         if (!reihe.regelmaessig) continue;
         const name = Object.keys(reihe.objekte)[0];
+        const luecke = CONFIG.BAENDER[name] ? CONFIG.BAENDER[name].abstand : reihe.abstand[0];
         for (const seite of this.seiten(reihe)) {
-          this.reiheZiehen(a.erstesStueck, a.erstesStueck + a.anzahl, seite, name, reihe.abstand[0], reihe.alle, true);
+          this.reiheZiehen(a.erstesStueck, a.erstesStueck + a.anzahl, seite, name, luecke, reihe.alle, true);
         }
       }
     }
@@ -335,7 +337,7 @@ const Scenery = {
           // Steht dort eine Leitplanke, kommt das Schild dahinter
           let luecke = naeher ? CONFIG.SZENERIE_MIN_ABSTAND : CONFIG.TEMPOSCHILD_ABSTAND;
           if (this.hatLeitplanke(i + verschiebung, seite)) {
-            luecke = CONFIG.LEITPLANKE_ABSTAND + SPRITE_DATEN.leitplanke.kollision + 0.4;
+            luecke = CONFIG.BAENDER.leitplanke.abstand + SPRITE_DATEN.leitplanke.kollision + 0.4;
           }
           if (this.platzieren(i + verschiebung, seite, name, luecke)) break versuche;
         }
@@ -424,7 +426,9 @@ const Scenery = {
 
     const varianten = d.varianten.length;
     if (gespiegelt === undefined) gespiegelt = d.spiegeln && this.zufall() < 0.5;
-    if (name === 'leitplanke') Road.stuecke[index].planke[seite < 0 ? 0 : 1] = true;
+    // Gehört das Objekt zu einem Band (Leitplanke, Zaun), merkt sich das Stück
+    // das Band, damit render.js es als durchgehende Fläche zeichnet.
+    if (CONFIG.BAENDER[name]) Road.stuecke[index].baender[seite < 0 ? 0 : 1].push(name);
     Road.stuecke[index].objekte.push({
       name: name,
       variante: Math.floor(this.zufall() * varianten) % varianten,
@@ -435,7 +439,7 @@ const Scenery = {
       hoehe: masse.hoehe,
       anker: d.anker,
       fest: d.fest,
-      unsichtbar: !!d.unsichtbar, // Leitplanke und Wand: kein Bild, nur Zusammenstoss
+      unsichtbar: !!d.unsichtbar, // Bänder und Hang: kein Bild, nur Zusammenstoss
       kx: seite * kMitte,      // Mitte des Zusammenstoss-Bereichs (Meter, mit Vorzeichen)
       kb: kb,                  // halbe Breite des Zusammenstoss-Bereichs
       zVon: zVon,              // Ausdehnung entlang der Strasse, ab Stückanfang

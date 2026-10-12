@@ -140,6 +140,7 @@ const Render = {
   kameraX: 0,
   kameraY: 0,
   objekteGezeichnet: 0, // für die Debug-Anzeige
+  ebene: [],            // Hilfsliste für objekteVorbereiten (alles auf einem Stück)
 
   start(ctx) {
     this.ctx = ctx;
@@ -595,25 +596,28 @@ const Render = {
   // sind. Ergebnis: Liste von nah nach fern (wird rückwärts gezeichnet).
   // Höchstens MAX_OBJEKTE Bilder, die nächsten zuerst: Fällt etwas weg,
   // dann ganz hinten, wo es kaum auffällt.
-  // Dazwischen stehen Einträge für Felswand und Leitplanke des jeweiligen
-  // Stücks, damit auch sie richtig von fern nach nah gezeichnet werden.
+  // Dazwischen stehen Einträge für Felswand und Bänder (Leitplanke, Zaun)
+  // des jeweiligen Stücks, damit auch sie richtig von fern nach nah gezeichnet werden.
   objekteVorbereiten() {
     const liste = [];
     const B = CONFIG.BREITE;
-    // Seitlicher Abstand der Leitplanke: was weiter draussen steht, steht dahinter
-    const plankeX = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE + CONFIG.LEITPLANKE_ABSTAND;
+    const rand = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE;
+    const ebene = this.ebene;
     let bilder = 0;
     for (let n = 0; n < this.anzahlSichtbar; n++) {
       const s = this.sichtbar[n];
       if (s.clip <= 0) break; // ab hier ist alles verdeckt
       const st = s.stueck;
-      const hinterPlanke = [];
+      // Alles, was auf diesem Stück steht, kommt zuerst in "ebene" und wird
+      // nach dem Abstand zur Strassenmitte sortiert ("tiefe"): Was weiter
+      // draussen steht, wird zuerst gezeichnet und vom Näheren verdeckt.
+      ebene.length = 0;
       if (s.abstand >= CONFIG.OBJEKT_MIN_ENTFERNUNG && bilder < CONFIG.MAX_OBJEKTE) {
         // Gleiche Perspektive wie die Strasse: massstab = Pixel pro Meter
         const massstab = Road.brennweite / s.abstand;
         const bodenY = this.horizont + (this.kameraY - s.bodenNah) * massstab;
         for (const o of st.objekte) {
-          if (o.unsichtbar) continue; // Leitplanke und Wand werden eigens gezeichnet
+          if (o.unsichtbar) continue; // Bänder und Wand werden eigens gezeichnet
           const hoehe = o.hoehe * massstab;
           if (hoehe < CONFIG.OBJEKT_MIN_PIXEL) continue; // winzig, weglassen
           const breite = o.breite * massstab;
@@ -630,16 +634,22 @@ const Render = {
           // Hinter einer Kuppe: nur den Teil über der Clip-Linie zeigen
           const sichtbarH = Math.min(h, s.clip - y);
           if (sichtbarH <= 0) continue;
-          const eintrag = { o: o, x: x, y: y, w: w, h: h, sichtbarH: sichtbarH, abstand: s.abstand };
-          if (st.planke[o.seite < 0 ? 0 : 1] && Math.abs(o.x) >= plankeX) hinterPlanke.push(eintrag);
-          else liste.push(eintrag);
+          ebene.push({ o: o, x: x, y: y, w: w, h: h, sichtbarH: sichtbarH, abstand: s.abstand, tiefe: Math.abs(o.x) });
           if (++bilder >= CONFIG.MAX_OBJEKTE) break;
         }
       }
-      // Rückwärts gezeichnet ergibt das: Wand, Objekte hinter der Planke,
-      // Planke, Objekte davor.
-      if (st.planke[0] || st.planke[1]) liste.push({ typ: 'planke', s: s, abstand: s.abstand });
-      for (const eintrag of hinterPlanke) liste.push(eintrag);
+      // Bänder: Was genau gleich weit draussen steht wie das Band, steht dahinter
+      for (let nr = 0; nr < 2; nr++) {
+        for (const name of st.baender[nr]) {
+          const tiefe = rand + CONFIG.BAENDER[name].abstand - 0.001;
+          ebene.push({ typ: 'band', s: s, nr: nr, band: CONFIG.BAENDER[name], abstand: s.abstand, tiefe: tiefe });
+        }
+      }
+      // Innen zuerst in die Liste: Rückwärts gezeichnet kommt dann aussen zuerst
+      if (ebene.length > 1) ebene.sort((a, b) => a.tiefe - b.tiefe);
+      for (const eintrag of ebene) liste.push(eintrag);
+      // Die Wand steht hinter allem auf diesem Stück: als Letztes in die
+      // Liste, also als Erstes gezeichnet
       if (s.wandNah[0] > 0 || s.wandFern[0] > 0 || s.wandNah[1] > 0 || s.wandFern[1] > 0) {
         liste.push({ typ: 'wand', s: s, abstand: s.abstand });
       }
@@ -658,8 +668,8 @@ const Render = {
         this.wandZeichnen(e.s);
         continue;
       }
-      if (e.typ === 'planke') {
-        this.plankeZeichnen(e.s);
+      if (e.typ === 'band') {
+        this.bandZeichnen(e.s, e.nr, e.band);
         continue;
       }
       const bilder = Sprites.bilder[e.o.name][e.o.variante];
@@ -783,55 +793,52 @@ const Render = {
     }
   },
 
-  // --- Leitplanke ---
+  // --- Bänder: Leitplanke, Holzzaun (später Absperrband) ---
   // Ein durchgehendes Band wie die Strasse: pro Strassenstück ein Viereck
   // von seinem nahen bis zu seinem fernen Ende, mit gemeinsamen Ecken zum
-  // Nachbarstück. Darum folgt die Planke Kurven und Hügeln ohne Stufen.
-  // (Früher war jedes 4-m-Stück ein eigenes, flaches Bild, das immer zur
-  // Kamera schaut. In Kurven ergab das Treppenstufen.)
-  // Darunter alle PFOSTEN_ALLE Meter ein dunkler Pfosten.
-  plankeZeichnen(s) {
-    const f = CONFIG.FARBEN;
+  // Nachbarstück. Darum folgt das Band Kurven und Hügeln ohne Stufen.
+  // (Früher war jedes Stück Planke oder Zaun ein eigenes, flaches Bild, das
+  // immer zur Kamera schaut. In Kurven ergab das Treppenstufen.)
+  // Alle Werte (Abstand, Latten, Farben, Pfosten) kommen aus "band", also
+  // aus BAENDER in config.js. nr: 0 = linke, 1 = rechte Strassenseite.
+  // Gezeichnet wird Spalte für Spalte: Für jede Bildspalte zwischen nahem
+  // und fernem Ende wird ausgerechnet, wo Ober- und Unterkante liegen.
+  bandZeichnen(s, nr, band) {
     const B = CONFIG.BREITE;
-    const st = s.stueck;
-    const abstand = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE + CONFIG.LEITPLANKE_ABSTAND;
+    const abstand = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE + band.abstand;
     const mN = Road.brennweite / s.nahZ;
     const mF = Road.brennweite / s.fernZ;
     const clip = Math.min(s.clip, CONFIG.HOEHE);
+    // Bildzeile für eine Höhe h (Meter über dem Boden) am nahen bzw. fernen Ende
     const yN = (h) => this.horizont + (this.kameraY - s.bodenNah - h) * mN;
     const yF = (h) => this.horizont + (this.kameraY - s.bodenFern - h) * mF;
-    const hOben = CONFIG.PLANKE_OBEN;
-    const hUnten = CONFIG.PLANKE_UNTEN;
-    const hMitte = (hOben + hUnten) / 2;
-    const pfostenAlle = Math.max(1, Math.round(CONFIG.PFOSTEN_ALLE / CONFIG.STUECK_LAENGE));
     const ctx = this.ctx;
+    const seite = nr === 0 ? -1 : 1;
+    // Strassenseitige Kante des Bands am nahen und am fernen Ende
+    const xN = B / 2 + (s.mitteNah + seite * abstand - this.kameraX) * mN;
+    const xF = B / 2 + (s.mitteFern + seite * abstand - this.kameraX) * mF;
+    const dx = xF - xN;
 
-    for (let nr = 0; nr < 2; nr++) {
-      if (!st.planke[nr]) continue;
-      const seite = nr === 0 ? -1 : 1;
-      const xN = B / 2 + (s.mitteNah + seite * abstand - this.kameraX) * mN;
-      const xF = B / 2 + (s.mitteFern + seite * abstand - this.kameraX) * mF;
+    // Pfosten zuerst: Sie stehen hinter den Latten
+    this.pfostenZeichnen(s, band, seite, abstand, xN, dx, yN, yF, clip);
 
-      // Pfosten zuerst: Er steht hinter dem Balken, am selben Ankerpunkt
-      // (strassenseitige Kante am nahen Ende des Stücks)
-      if (st.index % pfostenAlle === 0 && s.abstand >= CONFIG.OBJEKT_MIN_ENTFERNUNG) {
-        this.pfostenZeichnen(xN, yN(0), yN(hOben), mN, seite, clip);
-      }
-
-      const x0 = Math.max(Math.round(Math.min(xN, xF)), 0);
-      const x1 = Math.min(Math.round(Math.max(xN, xF)), B);
-      if (x1 <= x0) continue;
-      const dx = xF - xN;
-      const obenN = yN(hOben), obenF = yF(hOben);
+    const x0 = Math.max(Math.round(Math.min(xN, xF)), 0);
+    const x1 = Math.min(Math.round(Math.max(xN, xF)), B);
+    if (x1 <= x0) return;
+    for (const latte of band.latten) {
+      const obenN = yN(latte.oben), obenF = yF(latte.oben);
+      const hMitte = (latte.oben + latte.unten) / 2;
       const mitteN = yN(hMitte), mitteF = yF(hMitte);
-      const untenN = yN(hUnten), untenF = yF(hUnten);
+      const untenN = yN(latte.unten), untenF = yF(latte.unten);
       // Drei Durchgänge (je eine Farbe), damit die Farbe nicht pro Pixel wechselt
       for (let durchgang = 0; durchgang < 3; durchgang++) {
-        ctx.fillStyle = [f.PLANKE_UNTEN, f.PLANKE_OBEN, f.PLANKE_LICHT][durchgang];
+        const farbe = [latte.dunkel, latte.hell, latte.licht][durchgang];
+        if (!farbe) continue;
+        ctx.fillStyle = farbe;
         for (let x = x0; x < x1; x++) {
           const a = Math.min(Math.max((x + 0.5 - xN) / dx, 0), 1);
           const yo = Math.round(obenN + (obenF - obenN) * a);
-          // Mindestens 1 Pixel hoch, sonst zerfällt die Planke weit hinten in Punkte
+          // Mindestens 1 Pixel hoch, sonst zerfällt das Band weit hinten in Punkte
           const yu = Math.max(Math.round(untenN + (untenF - untenN) * a), yo + 1);
           const ym = Math.min(Math.max(Math.round(mitteN + (mitteF - mitteN) * a), yo), yu);
           let von, bis;
@@ -847,18 +854,44 @@ const Render = {
     }
   },
 
-  // Ein Pfosten der Leitplanke (Bild aus sprites.js), x = strassenseitige
-  // Kante, von yBoden bis yOben. Hinter Kuppen wie alle Objekte abgeschnitten.
-  pfostenZeichnen(x, yBoden, yOben, m, seite, clip) {
-    const bild = Sprites.bilder.leitplanke[0].normal;
-    const w = Math.max(1, Math.round(CONFIG.PFOSTEN_BREITE * m));
-    const links = seite < 0 ? Math.round(x) - w : Math.round(x);
-    const y = Math.round(yOben);
-    const h = Math.round(yBoden) - y;
-    if (h < CONFIG.OBJEKT_MIN_PIXEL || links >= CONFIG.BREITE || links + w <= 0) return;
-    const sichtbarH = Math.min(h, clip - y);
-    if (sichtbarH <= 0) return;
-    this.ctx.drawImage(bild, 0, 0, bild.width, bild.height * sichtbarH / h, links, y, w, sichtbarH);
+  // Die Pfosten eines Bands auf diesem Stück (Bild aus sprites.js). Sie stehen
+  // alle band.pfostenAlle Meter, gezählt ab Streckenbeginn, also auch mitten
+  // in einem Stück (z. B. bei 3 m). Wichtig: Ober- und Unterkante werden mit
+  // derselben Rechnung wie das Band bestimmt (gleiche Ecken, gleicher Anteil
+  // pro Bildspalte, gleiches Runden). Würde man den Pfosten für sich allein
+  // auf ganze Pixel runden, sässe er oft ein Pixel neben dem Band.
+  pfostenZeichnen(s, band, seite, abstand, xN, dx, yN, yF, clip) {
+    const L = CONFIG.STUECK_LAENGE;
+    const alle = band.pfostenAlle;
+    const start = s.stueck.index * L; // Anfang des Stücks auf der Strecke (Meter)
+    const bild = Sprites.bilder[band.pfostenBild][0].normal;
+    // Erster Pfosten auf oder nach dem Stückanfang (kleine Rechenfehler abfangen)
+    for (let k = Math.ceil(start / alle - 1e-9); k * alle < start + L - 1e-9; k++) {
+      const versatz = k * alle - start;          // Meter ab Stückanfang
+      const z = s.abstand + versatz;             // Meter vor der Kamera
+      if (z < CONFIG.OBJEKT_MIN_ENTFERNUNG) continue;
+      // Wo zwischen nahem (0) und fernem (1) Ende liegt der Pfosten?
+      const f = (z - s.nahZ) / (s.fernZ - s.nahZ);
+      const mitte = s.mitteNah + (s.mitteFern - s.mitteNah) * f;
+      const m = Road.brennweite / z;
+      const x = CONFIG.BREITE / 2 + (mitte + seite * abstand - this.kameraX) * m;
+      const w = Math.max(1, Math.round(band.pfostenBreite * m));
+      // Der Pfosten geht von der strassenseitigen Kante nach aussen
+      const links = seite < 0 ? Math.round(x) - w : Math.round(x);
+      if (links >= CONFIG.BREITE || links + w <= 0) continue;
+      // Ober- und Unterkante wie beim Band: aus den Ecken des Stücks, mit dem
+      // Anteil der Bildspalte, an der der Pfosten das Band berührt
+      const spalte = seite < 0 ? links + w - 1 : links;
+      const a = Math.abs(dx) > 1e-9 ? Math.min(Math.max((spalte + 0.5 - xN) / dx, 0), 1) : 0;
+      const yOben = Math.round(yN(band.pfostenHoehe) + (yF(band.pfostenHoehe) - yN(band.pfostenHoehe)) * a);
+      const yBoden = Math.round(yN(0) + (yF(0) - yN(0)) * a);
+      const h = yBoden - yOben;
+      if (h < CONFIG.OBJEKT_MIN_PIXEL) continue;
+      // Hinter Kuppen wie alle Objekte abgeschnitten
+      const sichtbarH = Math.min(h, clip - yOben);
+      if (sichtbarH <= 0) continue;
+      this.ctx.drawImage(bild, 0, 0, bild.width, bild.height * sichtbarH / h, links, yOben, w, sichtbarH);
+    }
   },
 
   // --- Tal: Hang, Talboden und Dunst ---
