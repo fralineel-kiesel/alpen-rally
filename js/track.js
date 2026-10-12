@@ -20,6 +20,16 @@
 //           wird in scenery.js festgelegt.
 //   dichte: (freiwillig) mehr oder weniger Objekte als normal,
 //           z. B. 1.5 = anderthalbmal so viele, 0.5 = halb so viele.
+//   gelaende: Alpen-Gelände neben der Strasse. Überdeckt die Umgebung auf der
+//           jeweiligen Seite; die andere Seite folgt weiter der "umgebung".
+//           'keins'                  = kein besonderes Gelände (nur Umgebung)
+//           'wand_links_tal_rechts'  = links Felswand, rechts Abhang ins Tal
+//           'wand_rechts_tal_links'  = rechts Felswand, links Abhang ins Tal
+//           'tal_links'              = nur links Abhang ins Tal
+//           'tal_rechts'             = nur rechts Abhang ins Tal
+//           Auf der Talseite steht immer eine Leitplanke. Wand und Abhang
+//           wachsen an den Abschnittsgrenzen weich heraus (GELAENDE_UEBERGANG
+//           in config.js). Einstellungen zu Wand und Tal: ebenfalls config.js.
 //
 // Tipps:
 // - Die Strecke ist ein Rundkurs: Nach dem letzten Abschnitt kommt wieder
@@ -32,30 +42,30 @@
 // - Nach jeder Zeile ein Komma, sonst startet das Spiel nicht.
 
 const STRECKE = [
-  { name: 'Start gerade',               laenge: 250, kurve:  0, hoehe:    0,    umgebung: 'wiese'    },
-  { name: 'Rechts 2',                   laenge: 120, kurve:  2, hoehe:    0,    umgebung: 'wald'     },
-  { name: 'Links 3',                    laenge:  90, kurve: -3, hoehe:    4,    umgebung: 'wald'     },
-  { name: 'Gerade bergauf',             laenge:  80, kurve:  0, hoehe:    6,    umgebung: 'wald'     },
-  { name: 'Rechts 4',                   laenge:  80, kurve:  4, hoehe:    3,    umgebung: 'wald'     },
-  { name: 'Links 4',                    laenge:  70, kurve: -4, hoehe:    0,    umgebung: 'wald'     },
-  { name: 'Haarnadel links',            laenge:  70, kurve: -6, hoehe:    8,    umgebung: 'fels'     },
-  { name: 'Aufstieg',                   laenge: 150, kurve:  0, hoehe:   14,    umgebung: 'wald'     },
-  { name: 'Rechts 3 weit',              laenge: 140, kurve:  3, hoehe:    6,    umgebung: 'lichtung' },
-  { name: 'Kuppe hoch',                 laenge: 100, kurve:  0, hoehe:   12,    umgebung: 'wiese'    },
-  { name: 'Kuppe runter',               laenge: 100, kurve:  0, hoehe:  -16,    umgebung: 'wiese'    },
-  { name: 'Links 5 nach Kuppe',         laenge:  80, kurve: -5, hoehe:   -6,    umgebung: 'fels'     },
-  { name: 'Rechts 2',                   laenge: 100, kurve:  2, hoehe:   -4,    umgebung: 'wald'     },
-  { name: 'S links',                    laenge:  60, kurve: -3, hoehe:    0,    umgebung: 'wald'     },
-  { name: 'S rechts',                   laenge:  60, kurve:  3, hoehe:    0,    umgebung: 'wald'     },
-  { name: 'S links eng',                laenge:  60, kurve: -4, hoehe:   -2,    umgebung: 'wald'     },
-  { name: 'Gefälle gerade',             laenge: 200, kurve:  0, hoehe:  -22,    umgebung: 'wald', dichte: 1.5 },
-  { name: 'Haarnadel rechts bergab',    laenge:  70, kurve:  6, hoehe:   -8,    umgebung: 'fels'     },
-  { name: 'Senke runter',               laenge: 100, kurve:  0, hoehe:  -14,    umgebung: 'wiese'    },
-  { name: 'Senke hoch',                 laenge: 100, kurve:  0, hoehe:   14,    umgebung: 'wiese'    },
-  { name: 'Rechts 5',                   laenge:  70, kurve:  5, hoehe:    2,    umgebung: 'fels'     },
-  { name: 'Links 2',                    laenge: 120, kurve: -2, hoehe:    0,    umgebung: 'lichtung' },
-  { name: 'Schnelle Gerade bergab',     laenge: 250, kurve:  0, hoehe:  -18,    umgebung: 'lichtung' },
-  { name: 'Links 4',                    laenge:  80, kurve: -4, hoehe:   -4,    umgebung: 'wald'     },
-  { name: 'Kehre rechts',               laenge:  70, kurve:  6, hoehe:   -6,    umgebung: 'fels'     },
-  { name: 'Rückweg zum Start',          laenge: 200, kurve:  0, hoehe: 'auto',  umgebung: 'wiese'    },
+  { name: 'Start gerade',               laenge: 250, kurve:  0, hoehe:    0,    umgebung: 'wiese',             gelaende: 'keins' },
+  { name: 'Rechts 2',                   laenge: 120, kurve:  2, hoehe:    0,    umgebung: 'wald',              gelaende: 'keins' },
+  { name: 'Links 3',                    laenge:  90, kurve: -3, hoehe:    4,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Gerade bergauf',             laenge:  80, kurve:  0, hoehe:    6,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Rechts 4',                   laenge:  80, kurve:  4, hoehe:    3,    umgebung: 'wald',              gelaende: 'wand_rechts_tal_links' },
+  { name: 'Links 4',                    laenge:  70, kurve: -4, hoehe:    0,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Haarnadel links',            laenge:  70, kurve: -6, hoehe:    8,    umgebung: 'fels',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Aufstieg',                   laenge: 150, kurve:  0, hoehe:   14,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Rechts 3 weit',              laenge: 140, kurve:  3, hoehe:    6,    umgebung: 'lichtung',          gelaende: 'tal_links' },
+  { name: 'Kuppe hoch',                 laenge: 100, kurve:  0, hoehe:   12,    umgebung: 'wiese',             gelaende: 'tal_links' },
+  { name: 'Kuppe runter',               laenge: 100, kurve:  0, hoehe:  -16,    umgebung: 'wiese',             gelaende: 'tal_links' },
+  { name: 'Links 5 nach Kuppe',         laenge:  80, kurve: -5, hoehe:   -6,    umgebung: 'fels',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Rechts 2',                   laenge: 100, kurve:  2, hoehe:   -4,    umgebung: 'wald',              gelaende: 'keins' },
+  { name: 'S links',                    laenge:  60, kurve: -3, hoehe:    0,    umgebung: 'wald',              gelaende: 'keins' },
+  { name: 'S rechts',                   laenge:  60, kurve:  3, hoehe:    0,    umgebung: 'wald',              gelaende: 'keins' },
+  { name: 'S links eng',                laenge:  60, kurve: -4, hoehe:   -2,    umgebung: 'wald',              gelaende: 'keins' },
+  { name: 'Gefälle gerade',             laenge: 200, kurve:  0, hoehe:  -22,    umgebung: 'wald', dichte: 1.5, gelaende: 'wand_rechts_tal_links' },
+  { name: 'Haarnadel rechts bergab',    laenge:  70, kurve:  6, hoehe:   -8,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links' },
+  { name: 'Senke runter',               laenge: 100, kurve:  0, hoehe:  -14,    umgebung: 'wiese',             gelaende: 'keins' },
+  { name: 'Senke hoch',                 laenge: 100, kurve:  0, hoehe:   14,    umgebung: 'wiese',             gelaende: 'keins' },
+  { name: 'Rechts 5',                   laenge:  70, kurve:  5, hoehe:    2,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links' },
+  { name: 'Links 2',                    laenge: 120, kurve: -2, hoehe:    0,    umgebung: 'lichtung',          gelaende: 'keins' },
+  { name: 'Schnelle Gerade bergab',     laenge: 250, kurve:  0, hoehe:  -18,    umgebung: 'lichtung',          gelaende: 'tal_rechts' },
+  { name: 'Links 4',                    laenge:  80, kurve: -4, hoehe:   -4,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Kehre rechts',               laenge:  70, kurve:  6, hoehe:   -6,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links' },
+  { name: 'Rückweg zum Start',          laenge: 200, kurve:  0, hoehe: 'auto',  umgebung: 'wiese',             gelaende: 'keins' },
 ];
