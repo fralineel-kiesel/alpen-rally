@@ -13,6 +13,11 @@ const Car = {
   aufGras: false,
   auslastung: 0, // Tempo / Grenztempo der aktuellen Kurve (1 = genau am Limit), für die Debug-Anzeige
 
+  // Zusammenstösse
+  sperre: 0,          // so lange (Sekunden) gibt es nach einem harten Aufprall keinen weiteren
+  wackeln: 0,         // so lange (Sekunden) wackelt das Bild noch (liest render.js)
+  letzterBusch: null, // durch diesen Busch fährt man gerade; er bremst nur einmal
+
   // Getriebe
   gang: 1,             // eingelegter Gang (1 bis 5)
   drehzahl: CONFIG.LEERLAUF_DREHZAHL, // aktuelle Motordrehzahl in U/min
@@ -115,6 +120,10 @@ const Car = {
     this.x += (seitwaerts + fliehkraft * aussen) * dt;
     this.x = Math.min(Math.max(this.x, -CONFIG.MAX_SEITLICH), CONFIG.MAX_SEITLICH);
 
+    // Bäume, Felsen, Leitplanken ... (vor dem Getriebe, damit es nach einem
+    // Aufprall gleich passend herunterschaltet)
+    this.kollisionen(dt);
+
     // Rückwärts fahren gibt es nicht
     this.tempo = Math.max(this.tempo, 0);
 
@@ -127,6 +136,50 @@ const Car = {
     if (this.z >= Road.laenge) {
       this.z -= Road.laenge;
     }
+  },
+
+  // --- Zusammenstösse mit Objekten am Strassenrand ---
+  // Das Auto steht im Bild ein paar Meter vor der Kamera (Road.autoAbstand).
+  // Geprüft werden die Objekte auf den Strassenstücken unter dem Auto: Passen
+  // seitliche Lage und Abstand zusammen, hat es gekracht.
+  kollisionen(dt) {
+    this.sperre = Math.max(this.sperre - dt, 0);
+    this.wackeln = Math.max(this.wackeln - dt, 0);
+
+    const L = CONFIG.STUECK_LAENGE;
+    const hinten = this.z + Road.autoAbstand;          // Heck des Autos (Meter auf der Strecke)
+    const vorne = hinten + CONFIG.AUTO_KOLLISION_LAENGE; // Front
+    const halbeBreite = CONFIG.AUTO_KOLLISION_BREITE / 2;
+    let imBusch = null;
+
+    // Leitplanken und Zäune sind 4 m lang und gehören zum Stück, auf dem sie
+    // beginnen. Darum auch ein paar Stücke vor dem Heck nachschauen.
+    for (let i = Math.floor(hinten / L) - 3; i <= Math.floor(vorne / L); i++) {
+      for (const o of Road.stueck(i).objekte) {
+        const oz = i * L; // Anfang des Stücks
+        if (oz + o.zBis < hinten || oz + o.zVon > vorne) continue; // nicht auf Höhe des Autos
+        if (Math.abs(o.kx - this.x) >= o.kb + halbeBreite) continue; // seitlich daneben
+        if (o.fest) {
+          if (this.sperre <= 0) this.aufprall(o, halbeBreite);
+        } else {
+          imBusch = o;
+          // Jeder Busch bremst nur einmal, nicht in jedem Bild wieder
+          if (o !== this.letzterBusch) this.tempo *= CONFIG.BUSCH_TEMPO;
+        }
+      }
+    }
+    this.letzterBusch = imBusch;
+  },
+
+  // Harter Aufprall: viel Tempo weg, Bild wackelt, und das Auto wird auf
+  // die strassenseitige Seite des Objekts versetzt, damit es nicht darin
+  // hängen bleibt. Danach eine Weile keine weitere Kollision.
+  aufprall(o, halbeBreite) {
+    this.tempo *= CONFIG.AUFPRALL_TEMPO;
+    this.wackeln = CONFIG.AUFPRALL_WACKELN;
+    this.sperre = CONFIG.AUFPRALL_SPERRE;
+    const zurMitte = -Math.sign(o.kx); // Objekt rechts: nach links schieben und umgekehrt
+    this.x = o.kx + zurMitte * (o.kb + halbeBreite + CONFIG.AUFPRALL_ABSTOSS);
   },
 
   // Antrieb je nach Steigung: 1 = normal, kleiner = bergauf schwächer,
