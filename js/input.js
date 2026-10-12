@@ -5,6 +5,7 @@
 
 const Input = {
   gedrueckt: {}, // z. B. { ArrowUp: true }
+  debugAnzeige: false, // Debug-Anzeige oben links, mit F3 ein- und ausschalten
 
   start() {
     window.addEventListener('keydown', (e) => {
@@ -12,6 +13,11 @@ const Input = {
         e.preventDefault(); // sonst scrollt die Seite bei den Pfeiltasten
       }
       this.gedrueckt[e.code] = true;
+      // Umschalten nur beim ersten Druck. Hält man F3 gedrückt, schickt der
+      // Browser die Taste immer wieder ("repeat"); sonst würde es flackern.
+      if (e.code === 'F3' && !e.repeat) {
+        this.debugAnzeige = !this.debugAnzeige;
+      }
     });
     window.addEventListener('keyup', (e) => {
       this.gedrueckt[e.code] = false;
@@ -32,4 +38,5 @@ const Input = {
 };
 
 // Tasten, bei denen der Browser nichts Eigenes machen soll
-const SPIEL_TASTEN = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+// (F3 öffnet sonst in manchen Browsern die Suche)
+const SPIEL_TASTEN = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'F3'];

@@ -27,11 +27,41 @@ const PIXEL_SCHRIFT = {
   '7': ['111', '001', '010', '010', '010'],
   '8': ['111', '101', '111', '101', '111'],
   '9': ['111', '101', '111', '001', '111'],
-  'K': ['101', '101', '110', '101', '101'],
-  'M': ['101', '111', '111', '101', '101'],
+  'A': ['010', '101', '111', '101', '101'],
+  'B': ['110', '101', '110', '101', '110'],
+  'C': ['011', '100', '100', '100', '011'],
+  'D': ['110', '101', '101', '101', '110'],
+  'E': ['111', '100', '110', '100', '111'],
+  'F': ['111', '100', '110', '100', '100'],
+  'G': ['011', '100', '101', '101', '011'],
   'H': ['101', '101', '111', '101', '101'],
+  'I': ['111', '010', '010', '010', '111'],
+  'J': ['001', '001', '001', '101', '010'],
+  'K': ['101', '101', '110', '101', '101'],
+  'L': ['100', '100', '100', '100', '111'],
+  'M': ['101', '111', '111', '101', '101'],
   'N': ['1001', '1101', '1011', '1001', '1001'],
+  'O': ['010', '101', '101', '101', '010'],
+  'P': ['110', '101', '110', '100', '100'],
+  'Q': ['010', '101', '101', '110', '011'],
+  'R': ['110', '101', '110', '101', '101'],
+  'S': ['011', '100', '010', '001', '110'],
+  'T': ['111', '010', '010', '010', '010'],
+  'U': ['101', '101', '101', '101', '111'],
+  'V': ['101', '101', '101', '101', '010'],
+  'W': ['101', '101', '111', '111', '101'],
+  'X': ['101', '101', '010', '101', '101'],
+  'Y': ['101', '101', '010', '010', '010'],
+  'Z': ['111', '001', '010', '100', '111'],
+  'Ä': ['101', '010', '101', '111', '101'],
+  'Ö': ['101', '000', '111', '101', '111'],
+  'Ü': ['101', '000', '101', '101', '111'],
   '/': ['001', '001', '010', '100', '100'],
+  '-': ['000', '000', '111', '000', '000'],
+  '+': ['000', '010', '111', '010', '000'],
+  '%': ['101', '001', '010', '100', '101'],
+  '.': ['0', '0', '0', '0', '1'],
+  ':': ['0', '1', '0', '1', '0'],
   ' ': ['000', '000', '000', '000', '000'],
 };
 
@@ -80,13 +110,15 @@ const Render = {
     this.bergVersatzVorne = ((this.bergVersatzVorne % b) + b) % b;
   },
 
-  zeichneAlles() {
+  // fps: Bilder pro Sekunde, nur für die Debug-Anzeige
+  zeichneAlles(fps) {
     this.himmel();
     this.berge(this.hoehenHinten, this.bergVersatzHinten, CONFIG.FARBEN.BERG_HINTEN);
     this.berge(this.hoehenVorne, this.bergVersatzVorne, CONFIG.FARBEN.BERG_VORNE);
     this.strasse();
     this.auto();
     this.anzeigen();
+    if (Input.debugAnzeige) this.debug(fps);
   },
 
   // Himmel in einigen Farbstufen von oben nach unten (Retro-Verlauf)
@@ -283,6 +315,31 @@ const Render = {
     this.text(zahl, x + 6 - this.textBreite(zahl), y + 11, 1, f.ANZEIGE_SKALA);
     this.text('KM/H', x - 7, y + 18, 1, f.ANZEIGE_RAHMEN);
     this.nadel(x, y, this.nadelTempo / CONFIG.TEMPO_SKALA_MAX);
+  },
+
+  // --- Debug-Anzeige (Taste F3) ---
+  // Hilft beim Testen und beim Bearbeiten der Strecke in track.js.
+  debug(fps) {
+    const f = CONFIG.FARBEN;
+    const stueck = Road.stueckBei(Car.z);
+    const kurve = stueck.kurve;
+    let kurveText = 'GERADE';
+    if (Math.abs(kurve) >= 0.05) {
+      kurveText = (kurve < 0 ? 'LINKS ' : 'RECHTS ') + Math.abs(kurve).toFixed(1);
+    }
+    const steigung = stueck.steigung * 100;
+    const zeilen = [
+      'FPS ' + Math.round(fps),
+      'STRECKE ' + Math.floor(Car.z) + ' / ' + Math.round(Road.laenge) + ' M',
+      'ABSCHNITT ' + stueck.abschnitt.toUpperCase(),
+      'KURVE ' + kurveText,
+      'STEIGUNG ' + (steigung > 0.05 ? '+' : '') + steigung.toFixed(1) + ' %',
+    ];
+    let breite = 0;
+    for (const z of zeilen) breite = Math.max(breite, this.textBreite(z));
+    this.ctx.fillStyle = f.DEBUG_HINTERGRUND;
+    this.ctx.fillRect(2, 2, breite + 4, zeilen.length * 7 + 2);
+    zeilen.forEach((z, i) => this.text(z, 4, 4 + i * 7, 1, f.DEBUG_TEXT));
   },
 
   // Winkel (Bogenmass) für einen Anteil der Skala von 0 bis 1.

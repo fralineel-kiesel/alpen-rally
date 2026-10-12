@@ -123,5 +123,7 @@ const CONFIG = {
     ANZEIGE_ROT: '#d8452c',        // roter Drehzahlbereich
     ANZEIGE_NADEL: '#ff3b1f',      // Nadel
     ANZEIGE_NABE: '#3a2e22',       // Mittelpunkt, an dem die Nadel befestigt ist
+    DEBUG_HINTERGRUND: 'rgba(0, 0, 0, 0.6)', // Kasten hinter der Debug-Anzeige (F3)
+    DEBUG_TEXT: '#ffffff',
   },
 };
