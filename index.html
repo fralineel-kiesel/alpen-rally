@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alpen Rally</title>
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      background: #000; /* schwarze Ränder, wenn das Fenster ein anderes Seitenverhältnis hat */
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #spiel {
+      /* So gross wie möglich, aber immer im Verhältnis 16:9 (320x180) */
+      width: min(100vw, 100vh * 16 / 9);
+      height: min(100vh, 100vw * 9 / 16);
+      /* Scharfe Pixel beim Hochskalieren statt Verschmieren */
+      image-rendering: crisp-edges; /* Ersatz für ältere Browser */
+      image-rendering: pixelated;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="spiel" width="320" height="180"></canvas>
+
+  <!-- Reihenfolge ist wichtig: Jede Datei braucht die davor geladenen -->
+  <script src="js/config.js"></script>
+  <script src="js/input.js"></script>
+  <script src="js/road.js"></script>
+  <script src="js/car.js"></script>
+  <script src="js/render.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
