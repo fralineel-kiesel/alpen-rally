@@ -80,6 +80,11 @@ const Render = {
   hoehenVorne: null,
   bergVersatzHinten: 0,
   bergVersatzVorne: 0,
+  // Horizont: kippt leicht mit der Steigung vor dem Auto (geglättet).
+  // horizontVersatz ist der genaue Wert, horizont die gerundete Bildzeile,
+  // auf der Himmel, Berge und Strasse in diesem Bild zusammentreffen.
+  horizontVersatz: 0,
+  horizont: CONFIG.HORIZONT_Y,
 
   start(ctx) {
     this.ctx = ctx;
@@ -108,6 +113,17 @@ const Render = {
     const b = CONFIG.BREITE;
     this.bergVersatzHinten = ((this.bergVersatzHinten % b) + b) % b;
     this.bergVersatzVorne = ((this.bergVersatzVorne % b) + b) % b;
+
+    // Horizont mit der Steigung kippen. Gemessen wird die Steigung über die
+    // nächsten Meter vor dem Auto, damit man eine Steigung schon kommen sieht.
+    // Bergauf rutscht der Horizont nach unten, als würde man hinaufschauen.
+    const voraus = CONFIG.HORIZONT_VORSCHAU;
+    const steigungVoraus = (Road.hoeheBei(Car.z + voraus) - Road.hoeheBei(Car.z)) / voraus;
+    const max = CONFIG.HORIZONT_MAX_VERSATZ;
+    const ziel = Math.min(Math.max(steigungVoraus * CONFIG.HORIZONT_NEIGUNG, -max), max);
+    this.horizontVersatz += (ziel - this.horizontVersatz) * (1 - Math.exp(-dt / CONFIG.HORIZONT_TRAEGHEIT));
+    // Auf ganze Pixel runden, sonst gibt es zwischen Bergen und Wiese eine Lücke
+    this.horizont = CONFIG.HORIZONT_Y + Math.round(this.horizontVersatz);
   },
 
   // fps: Bilder pro Sekunde, nur für die Debug-Anzeige
@@ -130,8 +146,8 @@ const Render = {
       const r = Math.round(f.HIMMEL_OBEN[0] + (f.HIMMEL_UNTEN[0] - f.HIMMEL_OBEN[0]) * t);
       const g = Math.round(f.HIMMEL_OBEN[1] + (f.HIMMEL_UNTEN[1] - f.HIMMEL_OBEN[1]) * t);
       const b = Math.round(f.HIMMEL_OBEN[2] + (f.HIMMEL_UNTEN[2] - f.HIMMEL_OBEN[2]) * t);
-      const y1 = Math.round(CONFIG.HORIZONT_Y * i / stufen);
-      const y2 = Math.round(CONFIG.HORIZONT_Y * (i + 1) / stufen);
+      const y1 = Math.round(this.horizont * i / stufen);
+      const y2 = Math.round(this.horizont * (i + 1) / stufen);
       this.ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
       this.ctx.fillRect(0, y1, CONFIG.BREITE, y2 - y1);
     }
@@ -160,23 +176,26 @@ const Render = {
     const v = Math.round(versatz);
     for (let x = 0; x < b; x++) {
       const hoehe = hoehen[(((x - v) % b) + b) % b];
-      this.ctx.fillRect(x, CONFIG.HORIZONT_Y - hoehe, 1, hoehe);
+      this.ctx.fillRect(x, this.horizont - hoehe, 1, hoehe);
     }
   },
 
   strasse() {
     const ctx = this.ctx;
     const f = CONFIG.FARBEN;
+    const horizont = this.horizont;
 
     // Grund-Gras bis zum Horizont, damit ganz hinten keine Lücke bleibt
     ctx.fillStyle = f.GRAS_DUNKEL;
-    ctx.fillRect(0, CONFIG.HORIZONT_Y, CONFIG.BREITE, CONFIG.HOEHE - CONFIG.HORIZONT_Y);
+    ctx.fillRect(0, horizont, CONFIG.BREITE, CONFIG.HOEHE - horizont);
 
     const L = CONFIG.STUECK_LAENGE;
     const kameraZ = Car.z;
     const kameraX = Car.x;
-    // Die Kamera fährt mit der Strasse hoch und runter
-    const bodenHoehe = Road.hoeheBei(kameraZ);
+    // Höhen werden fürs Bild verstärkt (HOEHEN_OPTIK), damit Hügel gut sichtbar sind.
+    // Die Kamera fährt mit der (verstärkten) Strasse hoch und runter.
+    const hoehenOptik = CONFIG.HOEHEN_OPTIK;
+    const bodenHoehe = Road.hoeheBei(kameraZ) * hoehenOptik;
     const kameraY = bodenHoehe + CONFIG.KAMERA_HOEHE;
     const ersterIndex = Math.floor(kameraZ / L);
 
@@ -210,10 +229,10 @@ const Render = {
       versatz += neigung * strecke + stueck.kruemmung * strecke * strecke / 2;
       neigung += stueck.kruemmung * strecke;
 
-      const hoeheVorne = n === 0 ? bodenHoehe : stueck.y;
-      const hoeheHinten = Road.stueck(index + 1).y;
-      const nah = Road.projiziere(versatzVorne, hoeheVorne, Math.max(abstandVorne, 0.1), kameraX, kameraY);
-      const fern = Road.projiziere(versatz, hoeheHinten, abstandHinten, kameraX, kameraY);
+      const hoeheVorne = n === 0 ? bodenHoehe : stueck.y * hoehenOptik;
+      const hoeheHinten = Road.stueck(index + 1).y * hoehenOptik;
+      const nah = Road.projiziere(versatzVorne, hoeheVorne, Math.max(abstandVorne, 0.1), kameraX, kameraY, horizont);
+      const fern = Road.projiziere(versatz, hoeheHinten, abstandHinten, kameraX, kameraY, horizont);
 
       const oben = Math.max(Math.round(fern.y), 0);
       const unten = Math.min(Math.round(nah.y), maxY);
@@ -328,12 +347,15 @@ const Render = {
       kurveText = (kurve < 0 ? 'LINKS ' : 'RECHTS ') + Math.abs(kurve).toFixed(1);
     }
     const steigung = stueck.steigung * 100;
+    const auslastung = Math.round(Car.auslastung * 100);
     const zeilen = [
       'FPS ' + Math.round(fps),
       'STRECKE ' + Math.floor(Car.z) + ' / ' + Math.round(Road.laenge) + ' M',
       'ABSCHNITT ' + stueck.abschnitt.toUpperCase(),
       'KURVE ' + kurveText,
       'STEIGUNG ' + (steigung > 0.05 ? '+' : '') + steigung.toFixed(1) + ' %',
+      // Wie viel vom Grenztempo der Kurve genutzt wird. Über 100 % untersteuert das Auto.
+      'AUSLASTUNG ' + (auslastung > 0 ? auslastung + ' %' : '-'),
     ];
     let breite = 0;
     for (const z of zeilen) breite = Math.max(breite, this.textBreite(z));

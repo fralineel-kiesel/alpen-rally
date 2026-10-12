@@ -29,56 +29,68 @@ const Road = {
     const L = CONFIG.STUECK_LAENGE;
     const maxStaerke = CONFIG.KURVEN_GRENZTEMPO.length - 1;
 
-    // 1) Abschnitte aufbereiten. Die Länge wird auf ganze Stücke gerundet,
-    //    die Steigung danach berechnet, damit die Höhe genau stimmt.
+    // 1) Abschnitte aufbereiten. Die Länge wird auf ganze Stücke gerundet.
     const abschnitte = STRECKE.map((a) => {
       const anzahl = Math.max(1, Math.round((a.laenge || 0) / L));
-      const laenge = anzahl * L;
       return {
         name: String(a.name || ''),
         anzahl: anzahl,
-        laenge: laenge,
+        laenge: anzahl * L,
         kurve: Math.min(Math.max(a.kurve || 0, -maxStaerke), maxStaerke),
-        steigung: (a.hoehe || 0) / laenge, // Meter hinauf pro Meter vorwärts
+        auto: a.hoehe === 'auto',
+        hoehe: a.hoehe === 'auto' ? 0 : (a.hoehe || 0),
       };
     });
 
-    // 2) Stücke anlegen. Kurve und Steigung kommen aus dem Abschnitt,
-    //    werden aber an den Grenzen weich übergeblendet (siehe mischen).
+    // 2) Abschnitte mit hoehe: 'auto' bekommen den Rest, damit alle Höhen
+    //    zusammen 0 ergeben (Ende = Start, Rundkurs ohne Sprung).
+    //    Gibt es mehrere, teilen sie sich den Rest nach ihrer Länge.
+    const autos = abschnitte.filter((a) => a.auto);
+    if (autos.length > 0) {
+      const summe = abschnitte.reduce((s, a) => s + a.hoehe, 0);
+      const autoLaenge = autos.reduce((s, a) => s + a.laenge, 0);
+      for (const a of autos) a.hoehe = -summe * a.laenge / autoLaenge;
+    }
+    // Steigung erst jetzt berechnen, damit sie zur gerundeten Länge passt
+    for (const a of abschnitte) a.steigung = a.hoehe / a.laenge; // Meter hinauf pro Meter vorwärts
+
+    // 3) Stücke anlegen. Kurve und Steigung kommen aus dem Abschnitt,
+    //    werden aber an den Grenzen kurz weich übergeblendet (siehe mischen).
     this.stuecke = [];
     abschnitte.forEach((a, nr) => {
       for (let j = 0; j < a.anzahl; j++) {
         const i = this.stuecke.length;
         const o = (j + 0.5) * L; // Mitte des Stücks, gemessen ab Abschnittsbeginn
         const kurve = this.mischen(abschnitte, nr, o, 'kurve');
-        const kurvenWert = this.kurvenWert(kurve);
+        const grenzKmh = this.grenztempoKmh(kurve);
+        // Krümmung fürs Bild (1 / Radius in Metern). Kommt aus dem Grenztempo
+        // im Quadrat: So sehen enge Kurven richtig eng und weite richtig weit aus.
+        const kehrwert = grenzKmh === Infinity ? 0 : 3.6 / grenzKmh;
         this.stuecke.push({
           index: i,
           // Abwechselnd hell und dunkel, jeweils STREIFEN_LAENGE Stücke lang.
           // Diese Streifen rasen am Auto vorbei und zeigen so das Tempo.
           hell: Math.floor(i / CONFIG.STREIFEN_LAENGE) % 2 === 0,
           abschnitt: a.name,
-          kurve: kurve,                           // Kurvenstärke wie in track.js, aber weich übergeblendet
-          kurvenWert: kurvenWert,                 // für die Fliehkraft (siehe car.js)
-          // Krümmung fürs Bild (1 / Radius in Metern). Quadratisch, damit
-          // enge Kurven richtig eng und weite richtig weit aussehen.
-          kruemmung: Math.sign(kurvenWert) * CONFIG.KURVEN_OPTIK * kurvenWert * kurvenWert,
+          kurve: kurve,                     // Kurvenstärke wie in track.js, aber weich übergeblendet
+          grenztempo: grenzKmh / 3.6,       // in m/s, für die Kurven-Physik (siehe car.js); Infinity = gerade
+          kruemmung: Math.sign(kurve) * CONFIG.KURVEN_OPTIK * kehrwert * kehrwert,
           steigung: this.mischen(abschnitte, nr, o, 'steigung'),
-          y: 0,                                   // Höhe am Anfang des Stücks, wird unten berechnet
+          y: 0,                             // Höhe am Anfang des Stücks, wird unten berechnet
         });
       }
     });
     this.laenge = this.stuecke.length * L;
 
-    // 3) Höhen aufsummieren: Jedes Stück beginnt dort, wo das vorige endet.
+    // 4) Höhen aufsummieren: Jedes Stück beginnt dort, wo das vorige endet.
     let y = 0;
     for (const s of this.stuecke) {
       s.y = y;
       y += s.steigung * L;
     }
 
-    // 4) Rundkurs schliessen: Am Ende müssen wir wieder auf Höhe 0 sein.
-    //    Ergibt die Liste das nicht ganz, wird der Rest gleichmässig auf
+    // 5) Rundkurs schliessen: Am Ende müssen wir wieder auf Höhe 0 sein.
+    //    Mit 'auto' passt das schon. Sonst wird der Rest gleichmässig auf
     //    die ganze Strecke verteilt (fällt bei wenigen Metern nicht auf).
     const rest = y;
     if (Math.abs(rest) > 0.5) {
@@ -95,22 +107,24 @@ const Road = {
   // Wert (Kurve oder Steigung) an Stelle o im Abschnitt Nummer nr.
   // Nahe an der Grenze zum vorigen oder nächsten Abschnitt wird weich
   // zwischen beiden Werten gemischt, statt ruckartig umzuschalten.
-  // Die Überblendung liegt je zur Hälfte in beiden Abschnitten. Weil sie
+  // Die Überblendung dauert UEBERGANG_ANTEIL der Länge des kürzeren der
+  // beiden Abschnitte und liegt je zur Hälfte in beiden. Weil sie
   // symmetrisch ist, bleibt die Gesamthöhe eines Abschnitts erhalten.
   mischen(abschnitte, nr, o, feld) {
     const n = abschnitte.length;
     const a = abschnitte[nr];
     const vor = abschnitte[(nr - 1 + n) % n];   // Rundkurs: vor dem ersten kommt der letzte
     const nach = abschnitte[(nr + 1) % n];
-    const halb = CONFIG.UEBERGANG / 2;
-    // Nie mehr als die halbe Abschnittslänge, damit sich Anfang und Ende nicht überlappen
-    const hVor = Math.min(halb, a.laenge / 2, vor.laenge / 2);
-    const hNach = Math.min(halb, a.laenge / 2, nach.laenge / 2);
+    const anteil = CONFIG.UEBERGANG_ANTEIL / 2;
+    // Halbe Überblendlänge an der Grenze zum vorigen bzw. nächsten Abschnitt.
+    // Nie mehr als die halbe Abschnittslänge, damit sich Anfang und Ende nicht überlappen.
+    const hVor = Math.min(anteil * Math.min(a.laenge, vor.laenge), a.laenge / 2);
+    const hNach = Math.min(anteil * Math.min(a.laenge, nach.laenge), a.laenge / 2);
 
-    if (o < hVor) {
+    if (hVor > 0 && o < hVor) {
       return this.weich(vor[feld], a[feld], (o + hVor) / (2 * hVor));
     }
-    if (o > a.laenge - hNach) {
+    if (hNach > 0 && o > a.laenge - hNach) {
       return this.weich(a[feld], nach[feld], (o - (a.laenge - hNach)) / (2 * hNach));
     }
     return a[feld];
@@ -123,17 +137,18 @@ const Road = {
     return a + (b - a) * s;
   },
 
-  // Kurvenwert für die Fliehkraft: 1 / Grenztempo (in m/s), mit Vorzeichen.
-  // Zwischenwerte (z. B. 4.5 beim Überblenden) werden aus der Tabelle gemischt.
-  kurvenWert(staerke) {
+  // Grenztempo in km/h für eine Kurvenstärke (Vorzeichen egal).
+  // Zwischen zwei Stärken (z. B. 4.5 beim Überblenden) wird gleichmässig gemischt.
+  // Unter Stärke 1 wird das Limit immer höher (Stärke 0.5 = doppeltes Grenztempo
+  // von Stärke 1), bei 0 gibt es keins (Infinity = unendlich).
+  grenztempoKmh(staerke) {
     const tabelle = CONFIG.KURVEN_GRENZTEMPO;
     const s = Math.min(Math.abs(staerke), tabelle.length - 1);
-    if (s === 0) return 0;
-    const wert = (i) => (i === 0 ? 0 : 3.6 / tabelle[i]); // km/h in m/s umrechnen, Kehrwert
+    if (s < 0.001) return Infinity;
+    if (s < 1) return tabelle[1] / s;
     const unten = Math.floor(s);
     const oben = Math.min(unten + 1, tabelle.length - 1);
-    const w = wert(unten) + (wert(oben) - wert(unten)) * (s - unten);
-    return Math.sign(staerke) * w;
+    return tabelle[unten] + (tabelle[oben] - tabelle[unten]) * (s - unten);
   },
 
   // Stück Nummer i. Die Strecke ist ein Ring: Nach dem letzten Stück
@@ -149,6 +164,7 @@ const Road = {
   },
 
   // Höhe der Strasse an Position z, zwischen Anfang und Ende des Stücks gemischt
+  // (echte Höhe in Metern, ohne die Verstärkung fürs Bild)
   hoeheBei(z) {
     const i = Math.floor(z / CONFIG.STUECK_LAENGE);
     const anteil = z / CONFIG.STUECK_LAENGE - i;
@@ -161,12 +177,13 @@ const Road = {
   //   weltX, weltY: seitliche Position und Höhe des Punkts in Metern
   //   abstand:      wie weit der Punkt vor der Kamera liegt, in Metern
   //   kameraX, kameraY: seitliche Position und Höhe der Kamera
+  //   horizontY: Bildzeile des Horizonts (verschiebt sich leicht mit der Steigung)
   // Ergebnis: x/y im Bild und "massstab" = Pixel pro Meter an dieser Stelle.
-  projiziere(weltX, weltY, abstand, kameraX, kameraY) {
+  projiziere(weltX, weltY, abstand, kameraX, kameraY, horizontY) {
     const massstab = this.brennweite / abstand;
     return {
       x: CONFIG.BREITE / 2 + (weltX - kameraX) * massstab,
-      y: CONFIG.HORIZONT_Y + (kameraY - weltY) * massstab,
+      y: horizontY + (kameraY - weltY) * massstab,
       massstab: massstab,
     };
   },
