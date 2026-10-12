@@ -79,14 +79,17 @@ const CONFIG = {
   // Antrieb bergauf schwächer, bergab stärker. Zahl = Prozent Antrieb pro Prozent Steigung.
   // 3.5 heisst: bei 10 % Steigung 35 % weniger Antrieb, bei 4 % nur 14 % weniger.
   ANTRIEB_BERGAUF: 3.5,
-  ANTRIEB_BERGAB: 3,        // bei 10 % Gefälle 30 % mehr Antrieb
+  ANTRIEB_BERGAB: 1,        // bei 10 % Gefälle 10 % mehr Antrieb (früher 3 = 30 %, war dem Tester zu stark)
   // Schwerkraft: So viel m/s pro Sekunde wird das Auto bei 100 % Steigung langsamer
   // (bergab entsprechend schneller). 9.81 = echte Erdanziehung, bei 10 % also ca. 1 m/s pro Sekunde.
   // Wirkt auch ohne Gas: Bergab rollt man weiter, bergauf ist man schnell langsam.
   HANGABTRIEB: 9.81,
+  // Dasselbe bergab, aber schwächer: So rollt und schiebt das Auto bergab weniger stark.
+  // 7 heisst: bei 10 % Gefälle 0.7 m/s pro Sekunde Schub (früher gleich wie bergauf, 9.81).
+  HANGABTRIEB_BERGAB: 7,
   // Bergab darf das Auto über sein Höchsttempo kommen, der Motor dreht dann in den roten Bereich.
-  // So viel mehr ist höchstens erlaubt (0.08 = 8 %, also 216 statt 200 km/h) ...
-  BERGAB_UEBERTEMPO: 0.08,
+  // So viel mehr ist höchstens erlaubt (0.03 = 3 %, also 206 statt 200 km/h; früher 0.08 = 216 km/h) ...
+  BERGAB_UEBERTEMPO: 0.03,
   // ... und zwar voll ab diesem Gefälle (0.08 = 8 %). Bei halb so viel Gefälle halb so viel.
   BERGAB_UEBERTEMPO_AB: 0.08,
   // Ist das Auto schneller als erlaubt (z. B. wenn das Gefälle aufhört), bremst der Motor

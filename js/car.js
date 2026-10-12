@@ -46,7 +46,9 @@ const Car = {
     // --- Steigung (Schwerkraft) ---
     // Bergauf zieht die Schwerkraft das Auto zurück, bergab schiebt sie es an.
     // Wirkt immer, also auch beim Ausrollen (bergab rollt man länger).
-    this.tempo -= steigung * CONFIG.HANGABTRIEB * dt;
+    // Bergab bewusst schwächer als bergauf, sonst wird das Auto im Gefälle zu schnell.
+    const hang = steigung > 0 ? CONFIG.HANGABTRIEB : CONFIG.HANGABTRIEB_BERGAB;
+    this.tempo -= steigung * hang * dt;
 
     // Zu schnell für den Motor (z. B. Gefälle vorbei)? Dann bremst der Motor
     // sanft aufs erlaubte Tempo zurück, statt dass das Tempo schlagartig springt.
