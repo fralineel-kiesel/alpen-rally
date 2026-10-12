@@ -1,6 +1,6 @@
 # Alpen Rally – Stand
 
-Letzte Aktualisierung: Meilenstein 2.5 abgeschlossen (Kurven-Physik, neue Strecke, sichtbare Hügel).
+Letzte Aktualisierung: Meilenstein 3 abgeschlossen (Landschaft, Strassenrand-Objekte, Kollisionen) plus Bergab-Korrektur.
 
 ## Fertig
 ### Meilenstein 1: Gerade Strasse, Platzhalter-Auto, Steuerung
@@ -54,6 +54,22 @@ Letzte Aktualisierung: Meilenstein 2.5 abgeschlossen (Kurven-Physik, neue Streck
   - Vollgas ohne Bremsen: Gras in 9 Abschnitten (beide Haarnadeln, beide Kehren, Links 4, Links 5, Rechts 4, Rechts 5, Rechts 2). Rundenzeit: Vollgas 105,7 s, wer vor den Kurven bremst und leicht über dem Limit fährt 103,5 s, ganz brav auf dem Limit 107,9 s.
   - Flach: 0–100 km/h weiterhin ca. 5 s, 200 km/h nach ca. 20 s. 10 % bergauf ab Stand: nach 20 s erst 121 km/h. 10 % bergab: 216 km/h nach 14 s.
 
+### Meilenstein 3: Landschaft, Strassenrand-Objekte, Kollisionen
+- **Vorab-Korrektur bergab** (Rückmeldung: bergab beschleunigt das Auto zu stark):
+  - Antriebsbonus bergab `ANTRIEB_BERGAB` 3 → 1 (bei 10 % Gefälle +10 % statt +30 % Antrieb).
+  - Erlaubtes Übertempo bergab `BERGAB_UEBERTEMPO` 0,08 → 0,03 (206 statt 216 km/h).
+  - Neu `HANGABTRIEB_BERGAB` 7 (vorher galt bergab wie bergauf 9,81): Rollen und Schieben bergab etwas schwächer.
+  - Nachgerechnet bei 10 % Gefälle (alt → neu): 0–150 km/h 6,9 → 8,4 s (flach: ca. 11 s), 100–195 km/h 7,0 → 8,8 s (flach 12,9 s), 5 s Rollen ab 150 km/h endet bei 107 → 102 km/h (flach 90).
+- **Sprites** (`js/sprites.js`): Alles als Textraster im Code, beim Start einmal in kleine Bilder umgewandelt. Erdige Palette ohne reines Schwarz. Fichte gross/klein (je 2 Varianten), Laubbaum (2), Busch (2), Fels (2 Formen), Leitplanke, Kurvenschild (Pfeil links, für rechts gespiegelt), Wegweiser (ohne Ortsnamen), Holzzaun, Kuh (2), dazu 3 Wolkenformen. Bäume, Büsche, Felsen, Kühe werden zufällig gespiegelt. Jeder Sprite hat Höhe in Metern, "fest" oder "weich" und eine Kollisionsbreite.
+- **Platzierung** (`js/scenery.js`): Jeder Abschnitt in `track.js` hat ein Feld `umgebung` (wald, wiese, fels, lichtung) und optional `dichte` (das "Gefälle gerade" hat 1,5 = dichter Wald). Die Umgebungen stehen als gut lesbare Liste von "Reihen" in `scenery.js` (Abstand zum Bankett, im Schnitt alle wie viele Meter, welche Sprites wie häufig). Fester Zufalls-Seed (`SZENERIE_SEED`): Bei jedem Start steht alles am selben Ort (geprüft). Nichts steht auf Strasse oder Bankett (geprüft, mindestens `SZENERIE_MIN_ABSTAND` 0,3 m Luft). Objekte überlappen sich nicht am selben Platz; was zuerst steht (Leitplanke, Zaun, Schild), hat Vorrang. Insgesamt ca. 2440 Objekte auf der Runde.
+- **Leitplanken** automatisch an der Aussenseite aller Kurven ab Stärke 4 (und ab Stärke 3 mit mind. 4 % Gefälle), 16 m vor bis 16 m nach der Kurve. Ein Stück alle 2 m, die Bilder überlappen, darum wirkt die Planke durchgehend. In "fels" zusätzlich links (Talseite).
+- **Kurvenschilder** 100 m vor allen 13 Kurven ab Stärke 3, an der Aussenseite, Pfeil in Kurvenrichtung. Steht dort eine Leitplanke, steht das Schild dahinter; steht dort ein Zaun, rückt es näher an die Strasse.
+- **Darstellung:** Objekte hängen an den Strassenstücken und werden mit derselben Perspektive gezeichnet (näher = grösser), ohne Glättung. Reihenfolge von weit nach nah. Hinter Kuppen wird jedes Objekt an der Bildzeile abgeschnitten, ab der nähere Strasse liegt (hohe Bäume hinter einer Kuppe zeigen also nur noch die Spitze, wie in echt). Objekte unter 2 Pixel Höhe werden weggelassen. Das Auto wird über die Objekte hinter ihm gezeichnet; Objekte, die näher an der Kamera sind als das Auto, kommen danach.
+- **Hintergrund:** Waldlinie aus kleinen Pixel-Tannen (zwei Reihen, gezackt) direkt über dem Horizont, wandert in Kurven schneller als die Berge (`WALDLINIE_PARALLAX` 110, Berge 40/70). 5 Pixel-Wolken treiben langsam nach rechts und wandern in Kurven leicht mit (`WOLKEN_DRIFT`, `WOLKEN_PARALLAX`, Positionen in `WOLKEN`).
+- **Kollisionen** (Werte in `config.js`): Fest (Baum, Fels, Leitplanke, Schild, Wegweiser, Zaun, Kuh): Tempo auf 25 %, 0,3 s Bildwackeln (2 Pixel), Auto wird auf die Strassenseite des Objekts versetzt, danach 1 s keine weitere Kollision. Das Getriebe schaltet von selbst passend herunter (meist in den 1. Gang). Weich (Busch): Tempo −15 %, jeder Busch nur einmal. Nachgerechnet (60 und 144 Hz gleich): mit 106 km/h in den Zaun → 26 km/h, Auto kommt frei und ist nach 4,4 s wieder auf der Strassenmitte.
+- **Leistung:** Pro Bild je nach Stelle ca. 20 (Kehren) bis 280 (Wald) Objekte, gezeichnet in ca. 1,1 ms (Budget bei 60 Hz: 16,7 ms). Mit künstlich 4-fach gebremstem Prozessor 99 % der Bilder unter 13 ms. Sicherheitsgrenze `MAX_OBJEKTE` 300 (die nächsten zuerst), wird auf der aktuellen Strecke nie erreicht (höchstens 284).
+- **Debug-Anzeige (F3):** zusätzlich "OBJEKTE" (gezeichnet in diesem Bild / Grenze).
+
 ## Steuerung
 | Taste | Wirkung |
 |---|---|
@@ -63,14 +79,14 @@ Letzte Aktualisierung: Meilenstein 2.5 abgeschlossen (Kurven-Physik, neue Streck
 | F3 | Debug-Anzeige ein/aus |
 
 ## Offen (nächste Meilensteine, siehe KONZEPT.md)
-- Meilenstein 3: Landschaft (Bäume, Büsche, Felsen, Leitplanken, Wegweiser, Waldkulisse im Hintergrund).
 - Meilenstein 4: Untergründe (Asphalt/Schotter/Schlamm), Zeit, Checkpoints, Beifahrer.
 - Danach: Berg-Hintergrund, Menü, Auto-Sprites, Sound usw.
+- Offene Ideen (siehe KONZEPT.md): Staubwolken hinten am Auto, Seitenansicht des Autos beim Lenken.
 
 ## Bekannte Macken
 - Ganz hinten am Horizont flimmern die Streifen etwas (sie sind dort kleiner als ein Pixel). Bei Retro-Spielen normal.
 - Wie bei allen Pseudo-3D-Spielen sind Kurven nur "aufgemalt": Eine Kehre dreht sich nicht wirklich um 180 Grad, die Strasse biegt sich nur stark zur Seite. Das Auto steht immer gerade.
-- Schaut man ein Gefälle hinunter, ist zwischen Horizont und Strasse eine grosse leere Wiese (es gibt noch keine Landschaft dazwischen). Mit den verstärkten Höhen fällt das jetzt stärker auf. Kommt mit Meilenstein 3.
+- Schaut man ein Gefälle hinunter, ist zwischen Horizont und Strasse viel Wiese. Mit Bäumen und Waldlinie ist das jetzt deutlich besser, in "wiese"-Abschnitten bleibt es aber gewollt offen.
 - Die Berg-Silhouette wiederholt sich alle 320 Pixel. An der Nahtstelle passen die Höhen nicht ganz (1–2 Pixel Sprung), fällt kaum auf.
 - Rutschen je nach Untergrund gibt es noch nicht (kommt mit Meilenstein 4).
 - Der Luftwiderstand wirkt jetzt immer, also auch beim Ausrollen und Bremsen. Bei hohem Tempo rollt das Auto darum etwas schneller aus als vorher.
@@ -82,4 +98,12 @@ Letzte Aktualisierung: Meilenstein 2.5 abgeschlossen (Kurven-Physik, neue Streck
 - Der "Rückweg zum Start" ist mit 15,5 % sehr steil (ergibt sich aus der Höhenliste) und darum zäh, man fährt dort ca. 60–75 km/h.
 - In Kurven, die sich weit hinten fast waagrecht durchs Bild ziehen, sieht man ganz am Horizont eine lange, 1 Pixel dünne graue Linie. Das ist die echte Strasse, die zur Seite wegläuft.
 - Die Automatik schaltet nur nach Drehzahl. Bergauf bleibt sie darum manchmal zu lange in einem hohen Gang, bevor sie herunterschaltet.
-- Sehr knapp unter dem Horizont kann man die Strasse hinter einem Hügel verschwinden und daneben wieder auftauchen sehen, mit 1 Pixel Wiese dazwischen (das ist richtig so, sieht aber ohne Landschaft etwas seltsam aus).
+- Sehr knapp unter dem Horizont kann man die Strasse hinter einem Hügel verschwinden und daneben wieder auftauchen sehen, mit 1 Pixel Wiese dazwischen (das ist richtig so).
+- Alle Objekte sind flache Bilder, die immer zur Kamera schauen (typisch Pseudo-3D). Leitplanken und Zäune sind darum aus vielen Stücken zusammengesetzt und sehen besonders in Kehren wie Treppenstufen aus.
+- Objekte stehen nur an Stückgrenzen (alle 2 m). Fällt im Spiel nicht auf.
+- Hält man nach einem Aufprall weiter auf die Leitplanke zu, kracht es jede Sekunde erneut (jedes Mal Tempo auf 25 %). Man muss also aktiv zurück auf die Strasse lenken.
+- Nach einem Aufprall im Wald wird das Auto nur bis knapp vor das getroffene Objekt versetzt, nicht ganz auf die Strasse. Steht dort gleich der nächste Baum, kracht es nach 1 s wieder.
+- Bei Bäumen zählt beim Aufprall nur Stamm und untere Äste (ca. 1 m breit), nicht die ganze Krone. Fährt man knapp an einem Baum vorbei, kann das Auto optisch kurz "in" der Krone sein.
+- Die grüne "Wand" vor dem steilen Rückweg zum Start (nach der Kehre rechts) gibt es weiterhin; jetzt stehen immerhin Bäume drauf.
+- Die Waldlinie und die Berge wiederholen sich alle 320 Pixel.
+- Ganz selten kurze Ruckler sind möglich, wenn der Browser im Hintergrund aufräumt (pro Bild werden ein paar hundert kleine Listen-Einträge neu angelegt). Bisher nur in der künstlich gebremsten Messung gesehen.

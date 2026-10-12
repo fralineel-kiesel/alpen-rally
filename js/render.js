@@ -1,4 +1,5 @@
-// Zeichnen: Himmel, Berge, Strasse, Auto und Anzeigen (Drehzahl, Tempo).
+// Zeichnen: Himmel, Wolken, Berge, Waldlinie, Strasse, Objekte am Rand,
+// Auto und Anzeigen (Drehzahl, Tempo).
 // Wir zeichnen fast alles mit fillRect auf ganze Pixel. Schräge Linien
 // würde der Browser sonst weichzeichnen, und das passt nicht zum Pixel-Look.
 
@@ -65,6 +66,10 @@ const PIXEL_SCHRIFT = {
   ' ': ['000', '000', '000', '000', '000'],
 };
 
+// Wolken laufen über so viele Pixel rundherum (breiter als das Bild,
+// damit sie ganz verschwinden, bevor sie auf der anderen Seite auftauchen)
+const WOLKEN_BEREICH = 480;
+
 const Render = {
   ctx: null,
   // Wohin die Nadeln gerade zeigen. Sie laufen dem echten Wert etwas
@@ -85,6 +90,17 @@ const Render = {
   // auf der Himmel, Berge und Strasse in diesem Bild zusammentreffen.
   horizontVersatz: 0,
   horizont: CONFIG.HORIZONT_Y,
+  // Waldlinie am Horizont (einmal vorgezeichnet) und ihre seitliche Verschiebung
+  waldlinie: null,
+  waldVersatz: 0,
+  // Wolken: aktuelle x-Position jeder Wolke (treiben langsam nach rechts)
+  wolkenX: [],
+  // Strassenstücke, die in diesem Bild sichtbar sind (merkt sich strasse()
+  // für die Objekte), und die Kamera dazu
+  sichtbar: [],
+  kameraX: 0,
+  kameraY: 0,
+  objekteGezeichnet: 0, // für die Debug-Anzeige
 
   start(ctx) {
     this.ctx = ctx;
@@ -94,6 +110,8 @@ const Render = {
     this.blattTempo = this.zifferblattVorzeichnen(CONFIG.TEMPO_SKALA_MAX, 40, 40, 20, null);
     this.hoehenHinten = this.bergHoehen(BERGE_HINTEN);
     this.hoehenVorne = this.bergHoehen(BERGE_VORNE);
+    this.waldlinie = this.waldlinieVorzeichnen();
+    this.wolkenX = CONFIG.WOLKEN.map((w) => w.x);
   },
 
   // Nadeln nachführen. "Glätten" heisst: Pro Zeitschritt ein Stück des
@@ -109,10 +127,20 @@ const Render = {
     const drehung = Car.tempo * Road.stueckBei(Car.z).kruemmung * dt;
     this.bergVersatzHinten -= drehung * CONFIG.BERG_PARALLAX_HINTEN;
     this.bergVersatzVorne -= drehung * CONFIG.BERG_PARALLAX_VORNE;
+    this.waldVersatz -= drehung * CONFIG.WALDLINIE_PARALLAX; // Waldlinie: näher, also noch schneller
     // Im Bereich 0 bis BREITE halten, damit die Zahl nicht endlos wächst
     const b = CONFIG.BREITE;
     this.bergVersatzHinten = ((this.bergVersatzHinten % b) + b) % b;
     this.bergVersatzVorne = ((this.bergVersatzVorne % b) + b) % b;
+    this.waldVersatz = ((this.waldVersatz % b) + b) % b;
+
+    // Wolken treiben von selbst langsam nach rechts und wandern in Kurven
+    // ein wenig mit (weniger als die Berge, sie sind ja weiter weg).
+    // Sie laufen rundherum über WOLKEN_BEREICH Pixel, also auch ausserhalb des Bilds.
+    for (let i = 0; i < this.wolkenX.length; i++) {
+      let x = this.wolkenX[i] + CONFIG.WOLKEN_DRIFT * dt - drehung * CONFIG.WOLKEN_PARALLAX;
+      this.wolkenX[i] = ((x % WOLKEN_BEREICH) + WOLKEN_BEREICH) % WOLKEN_BEREICH;
+    }
 
     // Horizont mit der Steigung kippen. Gemessen wird die Steigung über die
     // nächsten Meter vor dem Auto, damit man eine Steigung schon kommen sieht.
@@ -129,10 +157,20 @@ const Render = {
   // fps: Bilder pro Sekunde, nur für die Debug-Anzeige
   zeichneAlles(fps) {
     this.himmel();
+    this.wolken();
     this.berge(this.hoehenHinten, this.bergVersatzHinten, CONFIG.FARBEN.BERG_HINTEN);
     this.berge(this.hoehenVorne, this.bergVersatzVorne, CONFIG.FARBEN.BERG_VORNE);
+    this.waldlinieZeichnen();
     this.strasse();
+    // Objekte von weit nach nah zeichnen, damit nahe die fernen überdecken.
+    // Das Auto kommt dazwischen: Objekte hinter dem Auto zuerst, dann das
+    // Auto, dann die (seltenen) Objekte, die noch näher an der Kamera sind.
+    const liste = this.objekteVorbereiten();
+    this.objekteGezeichnet = liste.length;
+    this.objekteZeichnen(liste, true);
     this.auto();
+    this.objekteZeichnen(liste, false);
+    this.wackeln();
     this.anzeigen();
     if (Input.debugAnzeige) this.debug(fps);
   },
@@ -198,6 +236,9 @@ const Render = {
     const bodenHoehe = Road.hoeheBei(kameraZ) * hoehenOptik;
     const kameraY = bodenHoehe + CONFIG.KAMERA_HOEHE;
     const ersterIndex = Math.floor(kameraZ / L);
+    this.sichtbar = [];
+    this.kameraX = kameraX;
+    this.kameraY = kameraY;
 
     // Kurven: Die Strassenmitte wandert mit jedem Stück weiter zur Seite.
     // "versatz" = wie weit (Meter) die Mitte gerade neben der Blickrichtung
@@ -233,6 +274,13 @@ const Render = {
       const hoeheHinten = Road.stueck(index + 1).y * hoehenOptik;
       const nah = Road.projiziere(versatzVorne, hoeheVorne, Math.max(abstandVorne, 0.1), kameraX, kameraY, horizont);
       const fern = Road.projiziere(versatz, hoeheHinten, abstandHinten, kameraX, kameraY, horizont);
+
+      // Für die Objekte am Rand merken, wo dieses Stück liegt. "clip" ist
+      // die oberste Bildzeile, die nähere Stücke schon belegen: Alles von
+      // diesem Stück, was tiefer liegt, ist hinter einer Kuppe versteckt.
+      if (abstandVorne >= CONFIG.OBJEKT_MIN_ENTFERNUNG && stueck.objekte.length > 0) {
+        this.sichtbar.push({ stueck: stueck, abstand: abstandVorne, mitte: versatzVorne, boden: hoeheVorne, clip: maxY });
+      }
 
       const oben = Math.max(Math.round(fern.y), 0);
       const unten = Math.min(Math.round(nah.y), maxY);
@@ -329,6 +377,130 @@ const Render = {
     this.ctx.fillRect(a, y, b - a, 1);
   },
 
+  // --- Objekte am Strassenrand (Bäume, Felsen, Schilder ...) ---
+  // Rechnet für alle sichtbaren Objekte aus, wo und wie gross sie im Bild
+  // sind. Ergebnis: Liste von nah nach fern. Höchstens MAX_OBJEKTE, die
+  // nächsten zuerst: Fällt etwas weg, dann ganz hinten, wo es kaum auffällt.
+  objekteVorbereiten() {
+    const liste = [];
+    const B = CONFIG.BREITE;
+    for (const s of this.sichtbar) {
+      // Gleiche Perspektive wie die Strasse: massstab = Pixel pro Meter
+      const massstab = Road.brennweite / s.abstand;
+      const bodenY = this.horizont + (this.kameraY - s.boden) * massstab;
+      for (const o of s.stueck.objekte) {
+        const hoehe = o.hoehe * massstab;
+        if (hoehe < CONFIG.OBJEKT_MIN_PIXEL) continue; // winzig, weglassen
+        const breite = o.breite * massstab;
+        const ankerX = B / 2 + (s.mitte + o.x - this.kameraX) * massstab;
+        // 'innen': die strassenseitige Kante steht am Anker, das Bild geht nach aussen
+        let links = ankerX - breite / 2;
+        if (o.anker === 'innen') links = o.seite > 0 ? ankerX : ankerX - breite;
+        // Auf ganze Pixel runden (scharfe Kanten)
+        const x = Math.round(links);
+        const y = Math.round(bodenY - hoehe);
+        const w = Math.max(1, Math.round(links + breite) - x);
+        const h = Math.max(1, Math.round(bodenY) - y);
+        if (x >= B || x + w <= 0 || y >= CONFIG.HOEHE) continue; // neben dem Bild
+        // Hinter einer Kuppe: nur den Teil über der Clip-Linie zeigen
+        const sichtbarH = Math.min(h, s.clip - y);
+        if (sichtbarH <= 0) continue;
+        liste.push({ o: o, x: x, y: y, w: w, h: h, sichtbarH: sichtbarH, abstand: s.abstand });
+        if (liste.length >= CONFIG.MAX_OBJEKTE) return liste;
+      }
+    }
+    return liste;
+  },
+
+  // Objekte zeichnen, von fern nach nah (die Liste ist nah nach fern, darum rückwärts).
+  // hinterAuto: true = nur die hinter dem Auto, false = nur die davor.
+  objekteZeichnen(liste, hinterAuto) {
+    for (let i = liste.length - 1; i >= 0; i--) {
+      const e = liste[i];
+      if ((e.abstand >= Road.autoAbstand) !== hinterAuto) continue;
+      const bilder = Sprites.bilder[e.o.name][e.o.variante];
+      const bild = e.o.gespiegelt ? bilder.gespiegelt : bilder.normal;
+      // Beim Abschneiden nur den oberen Teil des Bilds nehmen. Die Leinwand
+      // hat die Glättung aus, darum bleiben die Pixel auch vergrössert scharf.
+      const quellH = bild.height * e.sichtbarH / e.h;
+      this.ctx.drawImage(bild, 0, 0, bild.width, quellH, e.x, e.y, e.w, e.sichtbarH);
+    }
+  },
+
+  // Nach einem harten Aufprall wackelt das Bild ein paar Pixel. Dafür wird
+  // das fertige Bild einfach leicht verschoben auf sich selbst kopiert.
+  // Das Muster hängt an der Restzeit, nicht an den Bildern pro Sekunde:
+  // Auf 60 Hz und 144 Hz wackelt es gleich.
+  wackeln() {
+    if (Car.wackeln <= 0) return;
+    const muster = [[1, 0.5], [-1, -0.5], [0.5, -1], [-0.5, 1], [1, -0.5], [-1, 0.5]];
+    const [mx, my] = muster[Math.floor(Car.wackeln / 0.04) % muster.length];
+    const a = CONFIG.AUFPRALL_WACKEL_PIXEL;
+    this.ctx.drawImage(this.ctx.canvas, Math.round(mx * a), Math.round(my * a));
+  },
+
+  // --- Hintergrund: Waldlinie und Wolken ---
+  // Die Waldlinie ist ein Streifen kleiner Pixel-Tannen direkt über dem
+  // Horizont. Sie wird einmal beim Start auf eine eigene Leinwand gezeichnet
+  // (so breit wie das Bild, rundherum nahtlos) und dann nur noch verschoben.
+  waldlinieVorzeichnen() {
+    const f = CONFIG.FARBEN;
+    const B = CONFIG.BREITE;
+    const H = CONFIG.WALDLINIE_HOEHE;
+    const leinwand = document.createElement('canvas');
+    leinwand.width = B;
+    leinwand.height = H;
+    const c = leinwand.getContext('2d');
+    // Eigener kleiner Zufall mit fester Startzahl: jedes Mal gleiche Waldlinie
+    let zahl = 12345;
+    const zufall = () => {
+      zahl = (zahl * 1103515245 + 12345) % 2147483648;
+      return zahl / 2147483648;
+    };
+    // Eine Tanne: Dreieck mit kleinen Absätzen, h Pixel hoch, Spitze bei x.
+    // Wird auch um eine Bildbreite versetzt gezeichnet, damit die Naht passt.
+    const tanne = (x, h, farbe) => {
+      c.fillStyle = farbe;
+      for (let r = 0; r < h; r++) {
+        let halb = Math.floor((r + 1) / 2.6);
+        if (r > 2 && r % 3 === 0) halb--; // Absatz: Äste stufenweise
+        for (const v of [-B, 0, B]) c.fillRect(x + v - halb, H - h + r, 2 * halb + 1, 1);
+      }
+    };
+    // Hintere Reihe: höher, heller und bläulicher (weiter weg)
+    for (let x = 0; x < B; x += 3 + Math.floor(zufall() * 4)) {
+      tanne(x, Math.round(H * (0.55 + zufall() * 0.45)), f.WALDLINIE_HINTEN);
+    }
+    // Vordere Reihe: kleiner und dunkler
+    for (let x = 1; x < B; x += 2 + Math.floor(zufall() * 4)) {
+      tanne(x, Math.round(H * (0.3 + zufall() * 0.35)), f.WALDLINIE_VORNE);
+    }
+    // Unten durchgehend, damit am Horizont nie Berg oder Himmel durchblitzt
+    c.fillStyle = f.WALDLINIE_VORNE;
+    c.fillRect(0, H - 2, B, 2);
+    return leinwand;
+  },
+
+  // Waldlinie zweimal nebeneinander zeichnen, um waldVersatz verschoben.
+  // So ist die ganze Bildbreite immer gefüllt.
+  waldlinieZeichnen() {
+    const v = Math.round(this.waldVersatz);
+    const y = this.horizont - CONFIG.WALDLINIE_HOEHE;
+    this.ctx.drawImage(this.waldlinie, v, y);
+    this.ctx.drawImage(this.waldlinie, v - CONFIG.BREITE, y);
+  },
+
+  // Wolken zwischen Himmel und Bergen (die Berge stehen also davor)
+  wolken() {
+    CONFIG.WOLKEN.forEach((w, i) => {
+      const bild = Sprites.wolken[w.form % Sprites.wolken.length];
+      // Der Wolkenbereich ist breiter als das Bild: Wolken verschwinden
+      // rechts ganz und tauchen später links wieder auf.
+      const x = Math.round(this.wolkenX[i]) - (WOLKEN_BEREICH - CONFIG.BREITE) / 2;
+      this.ctx.drawImage(bild, x, this.horizont - w.hoehe);
+    });
+  },
+
   // Platzhalter-Auto von hinten, immer unten in der Bildmitte.
   // Die Kamera folgt dem Auto, darum bewegt sich beim Lenken die Strasse.
   auto() {
@@ -406,6 +578,8 @@ const Render = {
       'STEIGUNG ' + (steigung > 0.05 ? '+' : '') + steigung.toFixed(1) + ' %',
       // Wie viel vom Grenztempo der Kurve genutzt wird. Über 100 % untersteuert das Auto.
       'AUSLASTUNG ' + (auslastung > 0 ? auslastung + ' %' : '-'),
+      // Wie viele Objekte (Bäume, Felsen ...) in diesem Bild gezeichnet wurden
+      'OBJEKTE ' + this.objekteGezeichnet + ' / MAX ' + CONFIG.MAX_OBJEKTE,
     ];
     let breite = 0;
     for (const z of zeilen) breite = Math.max(breite, this.textBreite(z));
