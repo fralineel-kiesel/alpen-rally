@@ -23,6 +23,22 @@ Ein Retro-Pixel-Rallyspiel im Pseudo-3D-Stil (wie OutRun): Blick von hinten aufs
 - Das Auto wird später aus mehreren Blickwinkeln gezeichnet (Mitte, leicht links, stark links; für rechts gespiegelt), sodass man beim Lenken die Seite des Autos sieht.
 - Die Strasse hat bewusst keine Rennstrecken-Randsteine (rot-weiss), sondern ein erdiges Bankett.
 
+## Landschaft am Strassenrand
+Jeder Abschnitt der Strecke hat eine Umgebung. Was dort genau steht, ist in `js/scenery.js` einstellbar:
+
+| Umgebung | Wie sie aussieht |
+|---|---|
+| wald | dichte Fichten (ein paar Laubbäume) in zwei Reihen pro Seite, dazwischen Büsche, dahinter weiterer Wald |
+| wiese | offene Weide mit Weidezaun (rechts), dahinter ab und zu Kühe, vereinzelt Bäume und Büsche, selten ein Wegweiser |
+| fels | Felsbrocken, vereinzelt Fichten, Leitplanke auf der Talseite |
+| lichtung | lichter Wald: wenige Bäume nah an der Strasse, weiter Blick, Wald erst weit hinten |
+
+Dazu automatisch: Leitplanken an der Aussenseite enger Kurven (ab Stärke 4, oder ab Stärke 3 mit Gefälle) und gelbe Kurvenschilder ca. 100 m vor jeder Kurve ab Stärke 3. Im Hintergrund eine Waldlinie am Horizont und treibende Wolken.
+
+Sprites (alle selbst per Code gezeichnet, in `js/sprites.js`):
+- fest (harter Aufprall): Fichte gross und klein (je 2 Varianten), Laubbaum (2), Fels (2 Formen), Leitplanke, Kurvenschild (links/rechts), Wegweiser, Holzzaun, Kuh (2)
+- weich (bremst nur): Busch (2)
+
 ## Autos (Fantasienamen, Arbeitsnamen)
 Inspiriert von Gruppe-B-Legenden, aber mit erfundenen Namen und eigenem Design. Keine echten Marken, Logos oder Originaldesigns.
 
@@ -52,6 +68,11 @@ Am Anfang gibt es nur ein Platzhalter-Auto aus einfachen Formen. Richtige Autos 
 - Lenkträgheit und Rutschen in Kurven, je nach Untergrund (Asphalt, Schotter, Schlamm).
 - Alle Fahrwerte stehen in `js/config.js`, damit sie leicht zu verstellen sind.
 
+## Offene Ideen
+- Staubwolken hinten am Auto.
+- Seitenansicht des Autos beim Lenken (siehe Look).
+- Asphalt/Schotter-Wechsel auf der Strecke (Untergründe kommen in Meilenstein 4).
+
 ## Was NICHT ins Spiel kommt
 - Kein Multiplayer, kein Online, keine Open World.
 - Kein echtes 3D.
@@ -62,7 +83,7 @@ Am Anfang gibt es nur ein Platzhalter-Auto aus einfachen Formen. Richtige Autos 
 1. Gerade Strasse, Platzhalter-Auto, Gas/Bremse/Lenken, Tempoanzeige.
 2. Kurven und Hügel.
 2.5. Kurven-Physik (Grenztempo, Untersteuern) und neue, dichtere Teststrecke mit sichtbaren Hügeln.
-3. Landschaft: Bäume, Büsche, Felsen, Leitplanken, Wegweiser, Waldkulisse im Hintergrund – dicht wie bei V-Rally 3.
+3. Landschaft und Kollisionen: Bäume, Büsche, Felsen, Leitplanken, Schilder, Zäune, Kühe, Waldlinie und Wolken im Hintergrund – dicht wie bei V-Rally 3. Aufprall an festen Objekten.
 4. Untergründe (Asphalt/Schotter/Schlamm), Zeit, Checkpoints, Beifahrer.
 5. Berg-Hintergrund, Tageszeiten, schöne Alpen-Optik.
 6. Menü, Autoauswahl, richtige Auto-Sprites.
