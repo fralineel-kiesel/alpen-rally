@@ -142,32 +142,105 @@ const CONFIG = {
   LEITPLANKE_GEFAELLE: 0.04,     // "bergab" heisst: mindestens so viel Gefälle (0.04 = 4 %)
   LEITPLANKE_VORLAUF: 16,        // so viele Meter vor der Kurve beginnt die Planke schon
   LEITPLANKE_NACHLAUF: 16,       // so viele Meter nach der Kurve hört sie erst auf
-  LEITPLANKE_ABSTAND: 0.3,       // Meter zwischen Bankett und Leitplanke
   // Auf jeder Talseite (siehe "gelaende" in track.js) steht die Leitplanke immer.
-  // Die Planke wird wie die Strasse als durchgehendes Band gezeichnet:
-  PLANKE_UNTEN: 0.45,            // Unterkante des Plankenbalkens in Metern über dem Boden
-  PLANKE_OBEN: 0.8,              // Oberkante des Plankenbalkens in Metern über dem Boden
-  PFOSTEN_ALLE: 4,               // alle so viele Meter steht ein Pfosten unter der Planke
-  PFOSTEN_BREITE: 0.15,          // Breite eines Pfostens in Metern
+  // Aussehen und Abstand der Leitplanke: siehe BAENDER weiter unten.
+
+  // --- Bänder: Leitplanke und Holzzaun (später auch das Rally-Absperrband) ---
+  // Ein Band wird wie die Strasse gezeichnet: pro Strassenstück (2 m) ein Viereck von seinem
+  // nahen bis zu seinem fernen Ende. Das nächste Stück beginnt genau an diesen Ecken, darum
+  // läuft das Band auch in Kurven ohne Stufen oder Spalten durch. Die Pfosten sind kleine
+  // Bilder (sprites.js); ihre Lage wird aus denselben Bildpunkten berechnet wie das Band,
+  // damit sie genau darunter sitzen. Alle Bänder benutzen dieselbe Zeichenfunktion
+  // (bandZeichnen in render.js), nur mit diesen Werten:
+  //   abstand:       Meter zwischen Bankett und der strassenseitigen Kante des Bands
+  //   latten:        waagrechte Balken/Latten, je von "unten" bis "oben" in Metern über dem Boden.
+  //                  Obere Hälfte in "hell", untere in "dunkel", "licht" = helle Linie an der
+  //                  Oberkante (null = keine). Weit hinten bleibt jede Latte mindestens 1 Pixel hoch.
+  //   pfostenAlle:   alle so viele Meter steht ein Pfosten (gezählt ab Streckenbeginn)
+  //   pfostenBreite: Breite eines Pfostens in Metern
+  //   pfostenHoehe:  Höhe eines Pfostens in Metern (höher als die oberste Latte = Spitze schaut heraus)
+  //   pfostenBild:   Name des Pfosten-Bilds in sprites.js
+  //   fest:          true = harter Aufprall wie an einem Fels, false = man fährt durch (nur Deko)
+  BAENDER: {
+    // Silbergraue Leitplanke an engen Kurven und auf der Talseite
+    leitplanke: {
+      abstand: 0.3,
+      latten: [
+        { unten: 0.45, oben: 0.8, hell: '#b6bcc4', dunkel: '#878e97', licht: '#eef1f4' },
+      ],
+      pfostenAlle: 4,
+      pfostenBreite: 0.15,
+      pfostenHoehe: 0.8,
+      pfostenBild: 'leitplanke',
+      fest: true,
+    },
+    // Holzzaun (Weidezaun) in den "wiese"-Abschnitten. Etwa so hoch wie das Auto im Bild.
+    zaun: {
+      abstand: 2,
+      latten: [
+        { unten: 0.3, oben: 0.45, hell: '#8b6842', dunkel: '#5f412b', licht: null },  // untere Latte
+        { unten: 0.75, oben: 0.9, hell: '#8b6842', dunkel: '#5f412b', licht: null },  // obere Latte
+      ],
+      pfostenAlle: 3,
+      pfostenBreite: 0.14,
+      pfostenHoehe: 1.0,
+      pfostenBild: 'zaun',
+      fest: true,
+    },
+  },
+
   // Temposchilder (rund, weiss mit rotem Rand) stehen vor Kurven, immer rechts der Strasse.
   // Welche Zahl bei welcher Kurvenstärke: { Stärke: Zahl }. Fehlt eine Stärke, gibt es dort kein Schild.
   TEMPOSCHILD_ZAHLEN: { 3: 80, 4: 60, 5: 50, 6: 40 },
   TEMPOSCHILD_VORLAUF: 120,      // so viele Meter vor Kurvenbeginn steht das Schild
   TEMPOSCHILD_ABSTAND: 0.6,      // Meter zwischen Bankett und Schild (steht dort eine Leitplanke, kommt das Schild dahinter)
 
-  // --- Gelände: Felswand und Abhang (Feld "gelaende" in track.js) ---
-  // Übergänge: Die Wand wächst über so viele Meter aus dem Boden (und sinkt am Ende
-  // wieder), der Abhang öffnet und schliesst sich genauso. Gemessen ab Abschnittsgrenze nach innen.
+  // --- Gelände: Hang und Abhang (Feld "gelaende" in track.js) ---
+  // Abhang (Talseite): öffnet sich über so viele Meter (und schliesst sich am Ende wieder).
+  // Gemessen ab Abschnittsgrenze nach innen.
   GELAENDE_UEBERGANG: 40,
-  // Felswand (Hangseite)
-  WAND_HOEHE: 28,                // Höhe der Felswand in Metern (28 = 3,5-mal die Strassenbreite von 8 m)
-  WAND_ABSTAND: 3,               // Breite des Geröllstreifens zwischen Bankett und Wand in Metern (Platz für ein paar Felsen und Büsche)
-  WAND_RAUSCHEN: 0.22,           // wie stark die Oberkante ausgefranst ist (0.22 = bis 22 % höher oder tiefer, 0 = ganz gerade)
-  WAND_SCHICHTEN: [0.14, 0.4, 0.68], // Grenzen der Gesteinsschichten als Anteil der Wandhöhe, von unten (3 Grenzen = 4 Bänder)
-  WAND_RISSE: 0.07,              // Anteil der Strassenstücke (2 m), an denen ein dunkler Riss in der Wand ist
-  WAND_GRAS: 0.05,               // Anteil der Strassenstücke mit einem Grasbüschel in der Wand
-  WAND_KOLLISION_AB: 0.15,       // erst ab diesem Anteil der vollen Höhe kracht es an der Wand (ganz am Anfang ist sie nur ein Erdhügel)
-  WAND_DETAIL_BIS: 220,          // weiter weg als so viele Meter: Wand nur noch einfarbig, ohne Schichten und Risse (spart Rechenzeit)
+  // Hang (Bergseite, "wand_..." in track.js): kein senkrechtes Blatt, sondern ein Querschnitt
+  // aus mehreren Flächenbändern, von der Strasse nach aussen und nach oben. Unten steiler Fels,
+  // oben eine bewachsene Böschung. Jeder Punkt des Querschnitts (von innen nach aussen):
+  //   seite: Abstand vom Bankettrand, in Strassenbreiten (1 = 8 m)
+  //   hoehe: Höhe über der Strasse, in Strassenbreiten
+  // Zwischen zwei Punkten liegt jeweils ein Band mit eigener Farbe (FARBEN.HANG_BAENDER).
+  // Wichtig: Jeder Punkt muss von der Kamera aus gesehen "über" dem vorigen liegen, sonst
+  // versteckt der Fels die Böschung dahinter. Faustregel: (hoehe * 8 - 2.5) / (seite * 8 + 4.8)
+  // muss von Punkt zu Punkt grösser werden. (Ein Fels, der 14 m hoch ist und oben flach wird,
+  // verdeckt von der Strasse aus alles, was darüber liegt: Dann sieht der Hang wieder wie
+  // eine Wand aus, mit Baumspitzen dahinter. Darum ist der Fels hier niedriger als im
+  // ersten Entwurf, und die Böschung steigt kräftig weiter an.)
+  HANG_PROFIL: [
+    { seite: 0.15, hoehe: 0.0 },  // P0: Ende des schmalen Streifens Geröll/Gras am Bankett
+    { seite: 0.35, hoehe: 0.45 }, // P1: Oberkante des steilen Felsfusses (3,6 m hoch)
+    { seite: 0.65, hoehe: 0.85 }, // P2: Oberkante des helleren Gesteins (bis hier Fels, 6,8 m)
+    { seite: 1.6,  hoehe: 1.7 },  // P3: Oberkante der Böschung (Wiese)
+    { seite: 3.2,  hoehe: 3.0 },  // P4: Hangkamm (Waldboden), 24 m über der Strasse
+  ],
+  // Keilförmige Enden: Am Anfang und Ende jedes Hang-Abschnitts wachsen Abstand und Höhe aller
+  // Punkte über so viele Meter weich von 0 auf 100 % (bei 0 liegt der Hang flach am Bankett).
+  // Folgt ein Abschnitt mit Hang auf derselben Seite, geht es ohne Unterbruch weiter.
+  HANG_UEBERGANG: 80,
+  HANG_KAMM_RAUSCHEN: 0.1,       // der Kamm ist bis zu so viel (0.1 = 10 %) höher oder tiefer, damit er nicht kerzengerade ist
+  // Gesteinsschichten: dünne, leicht schräge Farbbänder im Fels. band = in welchem Band
+  // (1 = Felsfuss P0-P1, 2 = helleres Gestein P1-P2), von/bis = Lage im Band (0 = unten, 1 = oben).
+  // Höchstens 3 Schichten, sie dürfen sich im selben Band nicht überlappen.
+  HANG_SCHICHTEN: [
+    { band: 1, von: 0.38, bis: 0.52 },
+    { band: 2, von: 0.18, bis: 0.3 },
+    { band: 2, von: 0.6, bis: 0.7 },
+  ],
+  HANG_SCHICHT_SCHWANKUNG: 0.12, // so weit (Anteil des Bands) wandern die Schichten entlang der Strasse auf und ab (schräg)
+  HANG_SCHICHT_WELLE: 120,       // ... und zwar einmal auf und ab auf so vielen Metern
+  HANG_RISSE: 0.07,              // Anteil der Strassenstücke (2 m) mit einem dunklen Riss im Fels
+  HANG_GRAS: 0.05,               // Anteil der Strassenstücke mit einem Grasflecken im helleren Gestein (P1-P2)
+  HANG_KOLLISION_AB: 0.15,       // erst ab diesem Wachstum (0.15 = 15 %) kracht es am Felsfuss (ganz am Keilende ist er nur ein Erdhügel)
+  HANG_BEWUCHS_AB: 0.35,         // erst ab diesem Wachstum stehen Bäume, Büsche und Felsen auf dem Hang
+  // Rechenzeit sparen in der Ferne:
+  HANG_DETAIL_BIS: 120,          // weiter weg als so viele Meter: keine Gesteinsschichten, Risse und Grasflecken mehr
+  HANG_GRUPPE_AB: 40,            // weiter weg: ein Viereck pro Farbstreifen (4 Stücke = 8 m) statt pro Stück
+  HANG_EINFACH_AB: 200,          // weiter weg (100 Stücke): nur noch 2 Bänder (Fels und Böschung) statt 5
   // Abhang (Talseite)
   TAL_RANDSTREIFEN: 2.2,         // Meter Gras zwischen Bankett und Abbruchkante (dort stehen Leitplanke und Schilder)
   TAL_TIEFE: 35,                 // so viele Meter tiefer als die Strasse liegt der Talboden
@@ -243,23 +316,22 @@ const CONFIG = {
     BANKETT_HELL: '#8b6b47',       // Schotter/Erde am Strassenrand, zwei ähnliche Brauntöne
     BANKETT_DUNKEL: '#7e6040',     // (nur wenig Unterschied, damit es nicht nach Rennstrecke aussieht)
     MITTELLINIE: '#e8e8e8',
-    // Leitplanke (Band) und Pfosten
-    PLANKE_OBEN: '#b6bcc4',        // obere Hälfte des Balkens
-    PLANKE_UNTEN: '#878e97',       // untere Hälfte (im Schatten)
-    PLANKE_LICHT: '#eef1f4',       // helle Lichtlinie an der Oberkante
-    // Felswand: Geröllstreifen davor, Gesteinsschichten von unten nach oben, je [hell, dunkel]
-    GEROELL_HELL: '#877e72',
-    GEROELL_DUNKEL: '#7d7468',
-    WAND_SCHICHTEN: [
-      ['#5f564c', '#595047'],      // unten: dunkles, erdiges Graubraun
-      ['#7a7066', '#736960'],      // graubraun
-      ['#8b8173', '#83796c'],      // helles Braungrau
-      ['#6f6c69', '#696663'],      // oben: kühles Grau
+    // (Farben von Leitplanke und Zaun stehen oben bei BAENDER)
+    // Hang: Farbe jedes Bands [hell, dunkel] (wechselt wie die Strasse alle paar Meter), von innen nach aussen
+    HANG_BAENDER: [
+      ['#877e72', '#7d7468'],      // Bankett bis P0: schmaler Streifen Geröll
+      ['#5f564c', '#585046'],      // P0-P1: steiler Felsfuss, dunkelgrau-braun
+      ['#8b8173', '#83796c'],      // P1-P2: helleres Gestein
+      ['#4f8f36', '#4a8833'],      // P2-P3: obere Böschung, Wiese
+      ['#2f5f2e', '#2c5a2b'],      // P3-P4: Hangkamm, dunkleres Grün (Waldboden)
     ],
-    WAND_KANTE: '#a39b8e',         // helle Linie an der Oberkante der Wand
-    WAND_RISS: '#3a332d',          // dunkle Risse
-    WAND_GRAS: '#4c7a34',          // Grasbüschel in der Wand
-    WAND_GRAS_HELL: '#77a347',
+    HANG_SCHICHTEN: [              // Farben der Gesteinsschichten (gleiche Reihenfolge wie HANG_SCHICHTEN oben)
+      ['#7a6656', '#73604f'],      // rötlich-braun
+      ['#6f6c69', '#696663'],      // kühles Grau
+      ['#a39b8e', '#9a9285'],      // hell
+    ],
+    HANG_RISS: '#3a332d',          // dunkle Risse im Fels
+    HANG_GRAS: '#5d8f3a',          // Grasflecken im Gestein
     // Abhang und Tal
     TAL_KANTE: '#5c4b33',          // Erde an der Abbruchkante
     TAL_HANG_HELL: '#3d6136',      // Hang hinter der Kante (Wald im Schatten), helle Streifen ...

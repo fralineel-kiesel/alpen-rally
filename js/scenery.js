@@ -7,10 +7,12 @@
 // Kurven und auf der Talseite, und Temposchilder vor Kurven (Einstellungen
 // in config.js).
 //
-// Ausserdem hat jeder Abschnitt ein "gelaende" (Felswand, Abhang ins Tal).
-// Hier wird für jedes Strassenstück ausgerechnet, wie hoch die Wand bzw. wie
-// weit offen der Abhang auf jeder Seite ist (0 = gar nicht, 1 = ganz).
-// Gezeichnet wird beides in render.js.
+// Ausserdem hat jeder Abschnitt ein "gelaende" (Hang, Abhang ins Tal).
+// Hier wird für jedes Strassenstück ausgerechnet, wie weit der Hang
+// gewachsen bzw. wie weit offen der Abhang auf jeder Seite ist (0 = gar
+// nicht, 1 = ganz), und wie der Querschnitt des Hangs dort genau aussieht.
+// Auf den Hang kommen eigene Bäume, Büsche und Felsen (HANG_BEWUCHS).
+// Gezeichnet wird alles in render.js.
 //
 // Der Zufall ist "gezinkt": Er startet immer mit derselben Zahl
 // (SZENERIE_SEED in config.js). Darum steht bei jedem Start alles an
@@ -23,9 +25,9 @@
 //   alle:    im Schnitt steht alle so viele Meter ein Objekt (pro Seite).
 //            Kleiner = dichter.
 //   seite:   'beide' (wenn weggelassen), 'links' oder 'rechts'
-//   regelmaessig: true = kein Zufall, genau alle "alle" Meter ein Stück,
-//            immer mit dem Abstand "von" (für Zäune und Leitplanken, die
-//            durchgehend aussehen sollen)
+//   regelmaessig: true = kein Zufall, genau alle "alle" Meter ein Stück
+//            (für Bänder wie den Zaun, die durchgehend sein sollen). Der
+//            Abstand zur Strasse kommt dann aus BAENDER in config.js.
 //   objekte: welche Sprites (Namen aus sprites.js), mit Gewicht.
 //            { fichte_gross: 3, laubbaum: 1 } = dreimal so viele Fichten wie Laubbäume.
 const UMGEBUNGEN = {
@@ -41,7 +43,7 @@ const UMGEBUNGEN = {
   // Offene Weide: rechts ein Weidezaun, dahinter ab und zu Kühe.
   // Vereinzelt Bäume und Büsche, selten ein Wegweiser.
   wiese: [
-    { abstand: [2, 2],     alle: 2,   regelmaessig: true, seite: 'rechts', objekte: { zaun: 1 } },
+    {                      alle: 2,   regelmaessig: true, seite: 'rechts', objekte: { zaun: 1 } },
     { abstand: [4, 16],    alle: 45,  seite: 'rechts', objekte: { kuh: 1 } },
     { abstand: [1, 14],    alle: 40,  objekte: { laubbaum: 2, fichte_gross: 1, fichte_klein: 1 } },
     { abstand: [0.4, 9],   alle: 30,  objekte: { busch: 1 } },
@@ -72,15 +74,42 @@ const UMGEBUNGEN = {
 // null = auf dieser Seite gilt einfach die Umgebung.
 const GELAENDE = {
   keins:                 { links: null,   rechts: null   },
-  wand_links_tal_rechts: { links: 'wand', rechts: 'tal'  },
-  wand_rechts_tal_links: { links: 'tal',  rechts: 'wand' },
+  wand_links_tal_rechts: { links: 'hang', rechts: 'tal'  },
+  wand_rechts_tal_links: { links: 'tal',  rechts: 'hang' },
   tal_links:             { links: 'tal',  rechts: null   },
   tal_rechts:            { links: null,   rechts: 'tal'  },
 };
 
-// Auf der Wandseite stehen keine Bäume, nur ab und zu ein Fels oder Busch
-// im Geröllstreifen vor der Wand. Gleicher Aufbau wie eine Reihe oben.
-const WAND_REIHE = { abstand: [0.3, 0.5], alle: 30, objekte: { fels_a: 2, fels_b: 1, busch: 1 } };
+// Bewuchs auf dem Hang ("wand_..." in track.js). Auf der Hangseite stehen
+// die normalen Reihen von oben nicht (dort ist ja der Hang), sondern diese
+// hier. Sie stehen nicht auf Strassenhöhe, sondern auf dem Hang selbst:
+//   lage: [von, bis] wo auf dem Querschnitt (HANG_PROFIL in config.js):
+//         0 = P0 (unten am Felsfuss), 1 = P1, 2 = P2, 3 = P3, 4 = P4 (Kamm).
+//         2.5 = halbwegs zwischen P2 und P3. Fels ist 0 bis 2, Böschung 2 bis 4.
+//   alle, objekte: wie bei den Reihen oben (alle = im Schnitt alle so viele Meter eins)
+// Auf dem Fels (0 bis 2) nur Felsen und vereinzelt Büsche, Bäume nur auf der Böschung.
+const HANG_BEWUCHS = {
+  wald: [
+    { lage: [2.1, 3.9],  alle: 3,  objekte: { fichte_gross: 5, fichte_klein: 3, laubbaum: 1 } },
+    { lage: [2.05, 3.7], alle: 10, objekte: { busch: 1 } },
+    { lage: [0.2, 1.9],  alle: 30, objekte: { fels_a: 2, fels_b: 1, busch: 1 } },
+  ],
+  wiese: [
+    { lage: [2.1, 3.9],  alle: 14, objekte: { laubbaum: 2, fichte_gross: 1, fichte_klein: 1 } },
+    { lage: [2.05, 3.7], alle: 12, objekte: { busch: 1 } },
+    { lage: [0.2, 1.9],  alle: 30, objekte: { fels_a: 2, fels_b: 1, busch: 1 } },
+  ],
+  fels: [
+    { lage: [2.1, 3.9],  alle: 12, objekte: { fichte_gross: 2, fichte_klein: 3 } },
+    { lage: [2.05, 3.7], alle: 16, objekte: { fels_b: 1, busch: 1 } },
+    { lage: [0.2, 1.9],  alle: 9,  objekte: { fels_a: 2, fels_b: 2, busch: 1 } },
+  ],
+  lichtung: [
+    { lage: [2.1, 3.9],  alle: 7,  objekte: { fichte_gross: 3, laubbaum: 2, fichte_klein: 1 } },
+    { lage: [2.05, 3.7], alle: 14, objekte: { busch: 1 } },
+    { lage: [0.2, 1.9],  alle: 30, objekte: { fels_a: 2, fels_b: 1, busch: 1 } },
+  ],
+};
 
 const Scenery = {
   zufall: null, // Zufallszahlen-Geber (0 bis 1), startet immer gleich
@@ -90,36 +119,44 @@ const Scenery = {
     this.zufall = this.zufallsGenerator(CONFIG.SZENERIE_SEED);
     for (const s of Road.stuecke) {
       s.objekte = [];
-      s.planke = [false, false]; // steht hier eine Leitplanke? [links, rechts] (für render.js)
+      s.baender = [[], []]; // welche Bänder (Leitplanke, Zaun) hier stehen, [links, rechts] (für render.js)
+      s.hangObjekte = [];   // Bäume, Büsche, Felsen auf dem Hang (stehen auf dem Hang, nicht auf Strassenhöhe)
     }
     this.anzahl = 0;
+    this.hangAufbau();
     this.gelaendeBerechnen();
     // Reihenfolge ist wichtig: Was zuerst steht, hat Vorrang. Ein Baum, der
     // auf eine Leitplanke käme, wird darum einfach weggelassen.
     this.leitplanken();
-    this.waende();
     this.regelmaessigeReihen();
     this.temposchilder();
+    this.hangKollision();
     this.zufallsReihen();
+    this.hangBewuchs();
   },
 
-  // --- Gelände: Felswand und Abhang ---
+  // --- Gelände: Hang und Abhang ---
   // Für jedes Stück und jede Seite eine Zahl von 0 bis 1:
-  //   stueck.wand[seite]: Höhe der Felswand (1 = volle WAND_HOEHE)
+  //   stueck.hang[seite]: wie weit der Hang gewachsen ist (1 = voller Querschnitt,
+  //                       0 = liegt flach am Bankett)
   //   stueck.tal[seite]:  wie weit der Abhang offen ist (1 = Kante direkt hinter der Leitplanke)
   // seite: 0 = links, 1 = rechts. Der Wert gilt am Anfang des Stücks.
-  // Die Übergänge liegen innen im Abschnitt: Die Wand beginnt an der
-  // Abschnittsgrenze bei 0 und ist nach GELAENDE_UEBERGANG Metern ganz hoch.
-  // Folgen zwei Abschnitte mit Wand auf derselben Seite, geht sie einfach weiter.
+  // Die Übergänge liegen innen im Abschnitt: Der Hang beginnt an der
+  // Abschnittsgrenze bei 0 und ist nach HANG_UEBERGANG Metern ganz gewachsen
+  // (Abhang: GELAENDE_UEBERGANG). So entsteht ein Keil statt einer Kante.
+  // Folgen zwei Abschnitte mit Hang auf derselben Seite, geht er einfach weiter.
+  // Wechselt der Hang die Seite, läuft der alte am Ende seines Abschnitts aus,
+  // und der neue wächst am Anfang des nächsten heraus.
   gelaendeBerechnen() {
     const L = CONFIG.STUECK_LAENGE;
     const n = Road.stuecke.length;
     const seiten = ['links', 'rechts'];
     for (const s of Road.stuecke) {
-      s.wand = [0, 0];
+      s.hang = [0, 0];
       s.tal = [0, 0];
     }
-    for (const art of ['wand', 'tal']) {
+    for (const art of ['hang', 'tal']) {
+      const uebergang = art === 'hang' ? CONFIG.HANG_UEBERGANG : CONFIG.GELAENDE_UEBERGANG;
       for (let nr = 0; nr < 2; nr++) {
         // 1) Hat Stück i auf dieser Seite diese Geländeart? (1 oder 0)
         const an = Road.stuecke.map((s) => {
@@ -143,9 +180,10 @@ const Scenery = {
           if (!an[i] || !an[(i - 1 + n) % n]) letzte = 0; else letzte++;
           abstand[i] = Math.min(abstand[i], letzte);
         }
-        // 4) Daraus ein weicher Anstieg von 0 auf 1 über GELAENDE_UEBERGANG Meter
+        // 4) Daraus ein weicher Anstieg von 0 auf 1 über "uebergang" Meter
+        //    (langsam los, schnell in der Mitte, langsam am Ende)
         for (let i = 0; i < n; i++) {
-          const t = Math.min(abstand[i] * L / CONFIG.GELAENDE_UEBERGANG, 1);
+          const t = Math.min(abstand[i] * L / uebergang, 1);
           Road.stuecke[i][art][nr] = Road.weich(0, 1, t);
         }
       }
@@ -153,15 +191,16 @@ const Scenery = {
     this.gelaendeFormen();
   },
 
-  // Aussehen von Wand und Tal pro Stück: ausgefranste Oberkante, leicht
-  // gewellte Gesteinsschichten, Risse und Grasbüschel; im Tal Felder und
-  // kleine Bäume. Eigener Zufall mit fester Startzahl, damit alles bei
-  // jedem Start gleich aussieht.
+  // Aussehen von Hang und Tal pro Stück: leicht unruhiger Kamm, schräge
+  // Gesteinsschichten, Risse und Grasflecken; im Tal Felder und kleine
+  // Bäume. Eigener Zufall mit fester Startzahl, damit alles bei jedem Start
+  // gleich aussieht. (Die Zufallszahlen werden in derselben Reihenfolge
+  // gezogen wie früher für die Felswand, darum sieht das Tal genau gleich aus.)
   gelaendeFormen() {
     const zufall = this.zufallsGenerator(CONFIG.SZENERIE_SEED + 1);
     const n = Road.stuecke.length;
     // Grobe Wellen (alle 8 Stücke = 16 m ein neuer Wert, dazwischen weich)
-    // plus feines Zittern pro Stück: so sieht die Kante felsig aus.
+    // plus feines Zittern pro Stück: so ist der Kamm nicht kerzengerade.
     const grob = [];
     for (let k = 0; k <= Math.ceil(n / 8); k++) grob.push(zufall() * 2 - 1);
     // Felder im Tal: immer ein paar Stücke lang dieselbe Farbe (10 bis 50 m)
@@ -175,22 +214,31 @@ const Scenery = {
       feldRest--;
       s.talFeld = feld; // Nummer der Farbe in TAL_FELDER
 
-      // Oberkante der Wand: grobe Welle plus Zittern
+      // Kamm des Hangs: grobe Welle plus Zittern (Faktor für die Höhe von P4)
       const k = Math.floor(s.index / 8);
       const welle = Road.weich(grob[k], grob[k + 1], (s.index % 8) / 8);
       const zittern = zufall() * 2 - 1;
-      s.wandOben = 1 + CONFIG.WAND_RAUSCHEN * (0.65 * welle + 0.35 * zittern);
-      // Schichtgrenzen in Metern über der Strasse, je ca. +-0.8 m gewellt
-      s.wandSchichten = CONFIG.WAND_SCHICHTEN.map((anteil) =>
-        anteil * CONFIG.WAND_HOEHE + (zufall() * 2 - 1) * 0.8);
-      // Riss: von welcher bis zu welcher Höhe (Anteil der Wandhöhe), sonst null
-      s.wandRiss = null;
-      if (zufall() < CONFIG.WAND_RISSE) {
+      s.hangKamm = 1 + CONFIG.HANG_KAMM_RAUSCHEN * (0.65 * welle + 0.35 * zittern);
+      // Gesteinsschichten: Lage im Band (0 bis 1). Eine lange, weiche Welle
+      // entlang der Strasse lässt sie schräg laufen, dazu ein ganz kleines Zittern.
+      const meter = s.index * CONFIG.STUECK_LAENGE;
+      s.hangSchichten = [0, 1, 2].map((nr) => {
+        const zitter = (zufall() * 2 - 1) * 0.02;
+        if (nr >= CONFIG.HANG_SCHICHTEN.length) return null;
+        const sch = CONFIG.HANG_SCHICHTEN[nr];
+        const welleS = Math.sin(2 * Math.PI * meter / CONFIG.HANG_SCHICHT_WELLE + nr * 2.1);
+        const mitte = (sch.von + sch.bis) / 2 + CONFIG.HANG_SCHICHT_SCHWANKUNG * welleS + zitter;
+        const halb = (sch.bis - sch.von) / 2;
+        return [Math.max(mitte - halb, 0.02), Math.min(mitte + halb, 0.98)];
+      });
+      // Riss im Fels: von welcher bis zu welcher Höhe (Anteil der Felshöhe P0 bis P2), sonst null
+      s.hangRiss = null;
+      if (zufall() < CONFIG.HANG_RISSE) {
         const von = 0.1 + zufall() * 0.4;
-        s.wandRiss = [von, von + 0.15 + zufall() * 0.3];
+        s.hangRiss = [von, von + 0.15 + zufall() * 0.3];
       }
-      // Grasbüschel: auf welcher Schichtgrenze (0, 1 oder 2), sonst -1
-      s.wandGras = zufall() < CONFIG.WAND_GRAS ? Math.floor(zufall() * CONFIG.WAND_SCHICHTEN.length) : -1;
+      // Grasfleck im helleren Gestein (P1-P2): auf welcher Höhe im Band (0 bis 1), sonst -1
+      s.hangGras = zufall() < CONFIG.HANG_GRAS ? 0.15 + 0.25 * Math.floor(zufall() * 3) : -1;
       // Abbruchkante zum Tal [links, rechts], Meter ab Strassenmitte (Infinity = kein Abhang)
       s.kante = [this.talKante(s.tal[0]), this.talKante(s.tal[1])];
       // Kleiner Baum am Hang oder unten im Tal [links, rechts]: so viele Meter
@@ -198,6 +246,94 @@ const Scenery = {
       // unter der Strassenhöhe bleibt.
       s.talBaum = [0, 1].map(() => (zufall() < CONFIG.TAL_BAUM_DICHTE ? 35 + zufall() * 150 : 0));
     }
+    // Querschnitt des Hangs für jedes Stück und jede Seite ausrechnen
+    for (const s of Road.stuecke) {
+      s.hangU = [new Float32Array(this.hangPunkte), new Float32Array(this.hangPunkte)];
+      s.hangH = [new Float32Array(this.hangPunkte), new Float32Array(this.hangPunkte)];
+      for (let nr = 0; nr < 2; nr++) this.hangQuerschnitt(s, nr);
+    }
+  },
+
+  // --- Querschnitt des Hangs ---
+  // Der Hang ist eine Liste von Punkten, von innen (Bankettrand, Strassenhöhe)
+  // nach aussen und oben. Zwischen zwei Punkten liegt jeweils eine Fläche
+  // mit einer Farbe. Zu den Punkten aus HANG_PROFIL kommen je zwei Punkte
+  // für jede Gesteinsschicht (Unter- und Oberkante). Der Aufbau ist bei
+  // jedem Stück gleich, nur die Zahlen ändern sich. Darum passen zwei
+  // benachbarte Stücke Punkt für Punkt aneinander (render.js zeichnet von
+  // Punkt k am nahen Ende zu Punkt k am fernen Ende).
+  // Ergebnis (einmal beim Start):
+  //   hangFlaechen[j]: Farbe der Fläche zwischen Punkt j und j+1, als
+  //                    { band, schicht } (schicht = -1: normale Bandfarbe)
+  //   hangPunktNr[k]:  welcher Punkt der Liste ist P0, P1, ... (für render.js)
+  //   hangPunkte:      Anzahl Punkte
+  hangAufbau() {
+    this.hangFlaechen = [];
+    this.hangPunktNr = [];
+    let punkte = 1; // Punkt 0 = Bankettrand
+    for (let k = 0; k < CONFIG.HANG_PROFIL.length; k++) {
+      // Schichten in diesem Band, von unten nach oben
+      const schichten = this.schichtenImBand(k);
+      for (const nr of schichten) {
+        this.hangFlaechen.push({ band: k, schicht: -1 });  // Band bis zur Schicht
+        this.hangFlaechen.push({ band: k, schicht: nr });  // die Schicht selbst
+        punkte += 2;
+      }
+      this.hangFlaechen.push({ band: k, schicht: -1 });    // Rest des Bands
+      this.hangPunktNr.push(punkte);
+      punkte++;
+    }
+    this.hangPunkte = punkte;
+  },
+
+  // Nummern der Gesteinsschichten, die in Band k liegen (von unten nach oben)
+  schichtenImBand(k) {
+    const liste = [];
+    CONFIG.HANG_SCHICHTEN.forEach((sch, nr) => { if (sch.band === k && nr < 3) liste.push(nr); });
+    return liste.sort((a, b) => CONFIG.HANG_SCHICHTEN[a].von - CONFIG.HANG_SCHICHTEN[b].von);
+  },
+
+  // Punkte des Querschnitts für Stück s, Seite nr ausrechnen (in s.hangU / s.hangH):
+  // U = Meter ab Strassenmitte (ohne Vorzeichen), H = Meter über der Strasse.
+  // Alle Punkte wachsen mit dem Hang (s.hang[nr]): bei 0 liegen sie alle am Bankettrand.
+  hangQuerschnitt(s, nr) {
+    const W = 2 * CONFIG.STRASSE_HALBE_BREITE; // eine Strassenbreite in Metern
+    const rand = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE;
+    const g = s.hang[nr];
+    const U = s.hangU[nr];
+    const H = s.hangH[nr];
+    const profil = CONFIG.HANG_PROFIL;
+    let j = 0;
+    U[j] = rand; H[j] = 0; j++;
+    let vorU = 0, vorH = 0; // voriger Punkt (Meter ab Bankettrand, ungewachsen)
+    for (let k = 0; k < profil.length; k++) {
+      const u = profil[k].seite * W;
+      let h = profil[k].hoehe * W;
+      if (k === profil.length - 1) h *= s.hangKamm; // Kamm mit Rauschen
+      // Schichten liegen auf der geraden Linie zwischen vorigem und diesem Punkt
+      for (const sch of this.schichtenImBand(k)) {
+        for (const anteil of s.hangSchichten[sch]) {
+          U[j] = rand + g * (vorU + (u - vorU) * anteil);
+          H[j] = g * (vorH + (h - vorH) * anteil);
+          j++;
+        }
+      }
+      U[j] = rand + g * u;
+      H[j] = g * h;
+      j++;
+      vorU = u; vorH = h;
+    }
+  },
+
+  // Ort auf dem Querschnitt von Stück s, Seite nr, für eine "lage" wie in
+  // HANG_BEWUCHS (0 = P0 ... 4 = P4). Ergebnis: [Meter ab Strassenmitte, Meter über der Strasse]
+  hangOrt(s, nr, lage) {
+    const p = this.hangPunktNr;
+    const k = Math.min(Math.floor(lage), p.length - 2);
+    const t = lage - k;
+    const a = p[k], b = p[k + 1];
+    const U = s.hangU[nr], H = s.hangH[nr];
+    return [U[a] + (U[b] - U[a]) * t, H[a] + (H[b] - H[a]) * t];
   },
 
   // Unbekanntes Gelände (Tippfehler in track.js)? Dann 'keins' und Warnung.
@@ -219,19 +355,30 @@ const Scenery = {
     return rand + CONFIG.TAL_OEFFNUNG * (1 - t) / t;
   },
 
-  // Fuss der Felswand, Meter ab Strassenmitte
-  wandFuss() {
-    return CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE + CONFIG.WAND_ABSTAND;
-  },
-
-  // Unsichtbare Einträge für den Zusammenstoss mit der Felswand
-  waende() {
+  // Unsichtbare Einträge für den Zusammenstoss mit dem Felsfuss (Band P0
+  // bis P1). Er steht dort, wo der Hang gerade anfängt: am Keilende fast am
+  // Bankett und ganz niedrig, bei vollem Hang P0 weit draussen. Ganz am
+  // Keilende (unter HANG_KOLLISION_AB) ist er nur ein Erdhügel, dort kracht es nicht.
+  hangKollision() {
+    const rand = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE;
+    const p0 = this.hangPunktNr[0];
     for (const s of Road.stuecke) {
       for (let nr = 0; nr < 2; nr++) {
-        if (s.wand[nr] < CONFIG.WAND_KOLLISION_AB) continue;
-        this.platzieren(s.index, nr === 0 ? -1 : 1, 'wand', CONFIG.WAND_ABSTAND);
+        if (s.hang[nr] < CONFIG.HANG_KOLLISION_AB) continue;
+        this.platzieren(s.index, nr === 0 ? -1 : 1, 'hang', s.hangU[nr][p0] - rand);
       }
     }
+  },
+
+  // Wie weit reicht der Hang auf Stück i (und den Nachbarn) seitlich?
+  // Meter ab Strassenmitte bis zum Kamm, 0 = kein Hang.
+  hangBreite(i, nr) {
+    let breite = 0;
+    for (let j = i - 1; j <= i + 1; j++) {
+      const s = Road.stueck(j);
+      if (s.hang[nr] > 0) breite = Math.max(breite, s.hangU[nr][this.hangPunkte - 1]);
+    }
+    return breite;
   },
 
   // Darf auf Stück i auf dieser Seite ein Objekt stehen, das von "innen"
@@ -239,8 +386,9 @@ const Scenery = {
   // - Talseite: alles muss mindestens 1 m vor der Abbruchkante stehen
   //   (ganz offen bleibt also nur der Randstreifen, dort steht die Leitplanke).
   //   Hohe Bäume erst ab TAL_BAUMFREI Metern, auch beim Übergang.
-  // - Wandseite: keine Bäume vor der Wand, nichts halb in der Wand, und
-  //   hinter einer schon halbhohen Wand nichts mehr (sieht man nicht).
+  // - Hangseite: Dort ist der Hang, also nichts auf Strassenhöhe zwischen
+  //   Bankett und Kamm (Bäume usw. stehen dort auf dem Hang, siehe hangBewuchs).
+  //   Nur wo der Hang am Keilende noch schmal ist, darf hinter dem Kamm etwas stehen.
   gelaendeErlaubt(i, seite, name, innen, aussen) {
     const s = Road.stueck(i);
     const nr = seite < 0 ? 0 : 1;
@@ -248,11 +396,8 @@ const Scenery = {
       if (aussen > this.talKante(s.tal[nr]) - 1) return false;
       if (SPRITE_DATEN[name].baum && innen < CONFIG.TAL_BAUMFREI) return false;
     }
-    if (s.wand[nr] > 0) {
-      const fuss = this.wandFuss();
-      if (innen < fuss && (SPRITE_DATEN[name].baum || aussen > fuss)) return false;
-      if (innen >= fuss && s.wand[nr] >= 0.5) return false;
-    }
+    const hang = this.hangBreite(i, nr);
+    if (hang > 0 && innen < hang + 1) return false;
     return true;
   },
 
@@ -275,7 +420,7 @@ const Scenery = {
       const seite = -Math.sign(a.kurve); // Rechtskurve (plus): aussen ist links (minus)
       const von = a.erstesStueck - Math.round(CONFIG.LEITPLANKE_VORLAUF / L);
       const bis = a.erstesStueck + a.anzahl + Math.round(CONFIG.LEITPLANKE_NACHLAUF / L);
-      this.reiheZiehen(von, bis, seite, 'leitplanke', CONFIG.LEITPLANKE_ABSTAND);
+      this.reiheZiehen(von, bis, seite, 'leitplanke', CONFIG.BAENDER.leitplanke.abstand);
     }
     // Talseite: überall, wo der Abhang auch nur ein bisschen offen ist
     // (am Anfang oder am Ende des Stücks)
@@ -283,20 +428,22 @@ const Scenery = {
       const naechstes = Road.stueck(s.index + 1);
       for (let nr = 0; nr < 2; nr++) {
         if (s.tal[nr] > 0 || naechstes.tal[nr] > 0) {
-          this.platzieren(s.index, nr === 0 ? -1 : 1, 'leitplanke', CONFIG.LEITPLANKE_ABSTAND);
+          this.platzieren(s.index, nr === 0 ? -1 : 1, 'leitplanke', CONFIG.BAENDER.leitplanke.abstand);
         }
       }
     }
   },
 
-  // Zäune und Leitplanken aus den Umgebungen (Reihen mit regelmaessig: true)
+  // Zäune aus den Umgebungen (Reihen mit regelmaessig: true).
+  // Bänder (Zaun) stehen im Abstand aus BAENDER, sonst gilt "abstand" der Reihe.
   regelmaessigeReihen() {
     for (const a of Road.abschnitte) {
       for (const reihe of UMGEBUNGEN[this.umgebungVon(a)]) {
         if (!reihe.regelmaessig) continue;
         const name = Object.keys(reihe.objekte)[0];
+        const luecke = CONFIG.BAENDER[name] ? CONFIG.BAENDER[name].abstand : reihe.abstand[0];
         for (const seite of this.seiten(reihe)) {
-          this.reiheZiehen(a.erstesStueck, a.erstesStueck + a.anzahl, seite, name, reihe.abstand[0], reihe.alle, true);
+          this.reiheZiehen(a.erstesStueck, a.erstesStueck + a.anzahl, seite, name, luecke, reihe.alle, true);
         }
       }
     }
@@ -335,7 +482,7 @@ const Scenery = {
           // Steht dort eine Leitplanke, kommt das Schild dahinter
           let luecke = naeher ? CONFIG.SZENERIE_MIN_ABSTAND : CONFIG.TEMPOSCHILD_ABSTAND;
           if (this.hatLeitplanke(i + verschiebung, seite)) {
-            luecke = CONFIG.LEITPLANKE_ABSTAND + SPRITE_DATEN.leitplanke.kollision + 0.4;
+            luecke = CONFIG.BAENDER.leitplanke.abstand + SPRITE_DATEN.leitplanke.kollision + 0.4;
           }
           if (this.platzieren(i + verschiebung, seite, name, luecke)) break versuche;
         }
@@ -353,10 +500,6 @@ const Scenery = {
         if (reihe.regelmaessig) continue;
         this.reiheVersuchen(stueck, reihe, this.seiten(reihe), dichte);
       }
-      // Vor einer (fast) fertigen Felswand: ab und zu ein Fels oder Busch
-      for (let nr = 0; nr < 2; nr++) {
-        if (stueck.wand[nr] >= 0.5) this.reiheVersuchen(stueck, WAND_REIHE, [nr === 0 ? -1 : 1], 1);
-      }
     }
   },
 
@@ -372,6 +515,61 @@ const Scenery = {
       if (!this.passtInsGelaende(stueck.index, seite, name, luecke)) continue;
       this.platzieren(stueck.index, seite, name, luecke);
     }
+  },
+
+  // Bäume, Büsche und Felsen auf dem Hang (HANG_BEWUCHS oben). Ihr Fusspunkt
+  // liegt auf dem Hang selbst, also höher und weiter draussen als die
+  // Strasse. Eigener Zufall, damit die übrige Landschaft gleich bleibt, wenn
+  // man hier etwas ändert. Erst ab HANG_BEWUCHS_AB Wachstum, damit am
+  // Keilende nichts direkt am Bankett steht. Kein Zusammenstoss: Der Felsfuss
+  // davor hält das Auto immer auf.
+  hangBewuchs() {
+    const zufall = this.zufallsGenerator(CONFIG.SZENERIE_SEED + 3);
+    for (const stueck of Road.stuecke) {
+      const a = Road.abschnitte[stueck.abschnittNr];
+      const dichte = a.dichte * CONFIG.SZENERIE_DICHTE;
+      for (const reihe of HANG_BEWUCHS[this.umgebungVon(a)]) {
+        const chance = Math.min(CONFIG.STUECK_LAENGE / reihe.alle * dichte, 1);
+        for (let nr = 0; nr < 2; nr++) {
+          if (zufall() >= chance) continue;
+          const name = this.auswaehlen(reihe.objekte, zufall);
+          const lage = reihe.lage[0] + zufall() * (reihe.lage[1] - reihe.lage[0]);
+          const variante = Math.floor(zufall() * SPRITE_DATEN[name].varianten.length);
+          const gespiegelt = SPRITE_DATEN[name].spiegeln && zufall() < 0.5;
+          if (stueck.hang[nr] < CONFIG.HANG_BEWUCHS_AB) continue;
+          this.hangPlatzieren(stueck, nr, name, lage, variante, gespiegelt);
+        }
+      }
+    }
+  },
+
+  // Ein Objekt auf den Hang von Stück "stueck" stellen (nr: 0 = links, 1 = rechts),
+  // ausser es steht schon etwas am selben Platz.
+  hangPlatzieren(stueck, nr, name, lage, variante, gespiegelt) {
+    const L = CONFIG.STUECK_LAENGE;
+    const seite = nr === 0 ? -1 : 1;
+    const masse = Sprites.masse(name);
+    const [u, h] = this.hangOrt(stueck, nr, lage);
+    // Schon etwas da? Wie bei platzieren: Kronen dürfen sich etwas überlappen.
+    for (let j = stueck.index - 2; j <= stueck.index + 2; j++) {
+      for (const o of Road.stueck(j).hangObjekte) {
+        if (o.seite !== seite || Math.abs(j - stueck.index) * L >= 1.5) continue;
+        if (Math.abs(Math.abs(o.x) - u) < (o.breite + masse.breite) * 0.35) return false;
+      }
+    }
+    stueck.hangObjekte.push({
+      name: name,
+      variante: variante,
+      gespiegelt: gespiegelt,
+      seite: seite,
+      x: seite * u,         // Mitte des Bilds, Meter ab Strassenmitte (minus = links)
+      boden: h,             // Fusspunkt so viele Meter über der Strasse (auf dem Hang)
+      breite: masse.breite,
+      hoehe: masse.hoehe,
+      anker: 'mitte',
+    });
+    this.anzahl++;
+    return true;
   },
 
   // Ein Objekt auf Stück i stellen. seite: -1 = links, +1 = rechts.
@@ -412,6 +610,9 @@ const Scenery = {
     for (let j = index - 3; j <= index + 3; j++) {
       for (const o of Road.stueck(j).objekte) {
         if (o.seite !== seite) continue;
+        // Der Felsfuss des Hangs ist nur für den Zusammenstoss da und
+        // blockiert keinen Platz (ein Schild darf z. B. direkt davor stehen)
+        if (o.name === 'hang' || name === 'hang') continue;
         const dz = (j - index) * L;
         // 1 m Luft zwischen Bäumen usw. Durchgehende Reihen (Leitplanke,
         // Zaun) dürfen sich lückenlos berühren.
@@ -424,7 +625,9 @@ const Scenery = {
 
     const varianten = d.varianten.length;
     if (gespiegelt === undefined) gespiegelt = d.spiegeln && this.zufall() < 0.5;
-    if (name === 'leitplanke') Road.stuecke[index].planke[seite < 0 ? 0 : 1] = true;
+    // Gehört das Objekt zu einem Band (Leitplanke, Zaun), merkt sich das Stück
+    // das Band, damit render.js es als durchgehende Fläche zeichnet.
+    if (CONFIG.BAENDER[name]) Road.stuecke[index].baender[seite < 0 ? 0 : 1].push(name);
     Road.stuecke[index].objekte.push({
       name: name,
       variante: Math.floor(this.zufall() * varianten) % varianten,
@@ -435,7 +638,8 @@ const Scenery = {
       hoehe: masse.hoehe,
       anker: d.anker,
       fest: d.fest,
-      unsichtbar: !!d.unsichtbar, // Leitplanke und Wand: kein Bild, nur Zusammenstoss
+      unsichtbar: !!d.unsichtbar, // Bänder und Hang: kein Bild, nur Zusammenstoss
+      boden: 0,                // Fusspunkt auf Strassenhöhe (nur Objekte auf dem Hang stehen höher)
       kx: seite * kMitte,      // Mitte des Zusammenstoss-Bereichs (Meter, mit Vorzeichen)
       kb: kb,                  // halbe Breite des Zusammenstoss-Bereichs
       zVon: zVon,              // Ausdehnung entlang der Strasse, ab Stückanfang
@@ -472,10 +676,11 @@ const Scenery = {
   },
 
   // Einen Namen aus { name: gewicht, ... } auslosen
-  auswaehlen(objekte) {
+  // (zufall: freiwillig ein eigener Zufallsgeber, sonst der normale)
+  auswaehlen(objekte, zufall) {
     let summe = 0;
     for (const name in objekte) summe += objekte[name];
-    let wurf = this.zufall() * summe;
+    let wurf = (zufall || this.zufall)() * summe;
     for (const name in objekte) {
       wurf -= objekte[name];
       if (wurf < 0) return name;

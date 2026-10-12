@@ -34,7 +34,9 @@ Jeder Abschnitt der Strecke hat eine Umgebung. Was dort genau steht, ist in `js/
 | lichtung | lichter Wald: wenige Bäume nah an der Strasse, weiter Blick, Wald erst weit hinten |
 
 Dazu automatisch:
-- **Leitplanken** an der Aussenseite enger Kurven (ab Stärke 4, oder ab Stärke 3 mit Gefälle) und auf jeder Talseite (siehe Gelände). Die Leitplanke wird wie die Strasse als durchgehendes Band gezeichnet (silbergrauer Balken, darunter alle 4 m ein dunkler Pfosten), damit sie auch in Kurven glatt durchläuft.
+- **Leitplanken** an der Aussenseite enger Kurven (ab Stärke 4, oder ab Stärke 3 mit Gefälle) und auf jeder Talseite (siehe Gelände). Silbergrauer Balken, darunter alle 4 m ein dunkler Pfosten.
+- **Bänder:** Leitplanke und Holzzaun (und später das Rally-Absperrband) sind keine aneinandergereihten Bilder, sondern werden mit einer gemeinsamen Band-Funktion wie die Strasse gezeichnet: pro Strassenstück ein Viereck, mit gemeinsamen Kanten zum Nachbarstück. So laufen sie auch in Kurven ohne Stufen oder Spalten durch. Was ein Band ist, steht in `BAENDER` in `js/config.js` (Abstand zur Strasse, Latten mit Höhe und Farben, Pfostenabstand, Pfosten-Bild, fest ja/nein). Die Pfosten sind kleine Bilder, die aus denselben Bildpunkten wie das Band berechnet werden und darum genau darunter sitzen.
+- **Holzzaun** in "wiese" rechts: zwei Latten (hell und dunkel Holzbraun), alle 3 m ein Holzpfosten, etwa so hoch wie das Auto.
 - **Temposchilder** ca. 120 m vor jeder Kurve ab Stärke 3, immer rechts der Strasse: runde weisse Scheibe mit rotem Rand und schwarzer Zahl. Stärke 3 = 80, 4 = 60, 5 = 50, 6 = 40. Reine Dekoration, kein Einfluss aufs Fahren. (Kurvenschilder mit Pfeil gibt es nicht mehr, die stehen an echten Passstrassen so nicht.)
 
 ### Gelände (Feld `gelaende` in `js/track.js`)
@@ -43,22 +45,23 @@ Jeder Abschnitt hat zusätzlich ein Alpen-Gelände. Es überdeckt die Umgebung a
 | gelaende | links | rechts |
 |---|---|---|
 | keins | Umgebung | Umgebung |
-| wand_links_tal_rechts | Felswand | Abhang ins Tal |
-| wand_rechts_tal_links | Abhang ins Tal | Felswand |
+| wand_links_tal_rechts | Hang | Abhang ins Tal |
+| wand_rechts_tal_links | Abhang ins Tal | Hang |
 | tal_links | Abhang ins Tal | Umgebung |
 | tal_rechts | Umgebung | Abhang ins Tal |
 
-- **Felswand (Hangseite):** durchgehende Felswand, ca. 3,5-mal so hoch wie die Strasse breit ist, oben ausgefranst, erdiges Grau und Braun in Gesteinsschichten, ein paar Risse und Grasbüschel. Davor ein schmaler Geröllstreifen mit ab und zu einem Fels oder Busch, keine Bäume. Aufprall wie an einem Fels.
+- **Hang (Bergseite, "wand_..."):** Der Name ist geblieben, gemeint ist aber keine senkrechte Wand mehr, sondern ein Hang wie bei V-Rally 3 (GBA). Er hat einen Querschnitt aus mehreren Flächenbändern von der Strasse nach aussen und oben (`HANG_PROFIL` in `js/config.js`): schmaler Geröllstreifen am Bankett, steiler Felsfuss (dunkelgrau-braun), helleres Gestein mit Grasflecken, darüber eine grüne Böschung und oben der Hangkamm (dunkles Grün, Waldboden). Im Fels laufen leicht schräge Gesteinsschichten und ein paar dunkle Risse, der Kamm ist leicht unruhig. Fichten und Büsche stehen auf der Böschung, auf dem Fels nur Felsen und vereinzelt Büsche (`HANG_BEWUCHS` in `js/scenery.js`). Weil nähere Stücke später gezeichnet werden, verdeckt der Hang alles dahinter (Bäume, Tal, Strasse nach einer Kurve). Aufprall am Felsfuss wie an einem Fels.
 - **Abhang (Talseite):** hinter Randstreifen und Leitplanke fällt ein Hang zum Talboden ab, der deutlich tiefer liegt. Der Talboden ist ein Flickenteppich aus Wiesen und Waldstücken mit kleinen Bäumen, in der Ferne im Dunst. Ganz hinten eine Dunst-Landschaft aus blaugrünen und bläulich-grauen Streifen mit kleinen Baumwipfeln. Keine hohen Bäume nahe der Strasse.
-- **Übergänge:** Die Wand wächst über ca. 40 m aus dem Boden und sinkt am Ende wieder, der Abhang öffnet und schliesst sich genauso.
+- **Übergänge:** Der Hang hat keilförmige Enden: Über ca. 80 m wachsen Abstand und Höhe aller Punkte des Querschnitts weich von 0 (flach am Bankett) auf 100 %, am Ende umgekehrt. Folgen zwei Abschnitte mit Hang auf derselben Seite, geht er ohne Unterbruch weiter. Wechselt der Hang die Seite, läuft der alte aus, und der neue wächst heraus. Der Abhang öffnet und schliesst sich über ca. 40 m.
 
 ### Hintergrund
 Drei Berg-Ebenen: ganz hinten helle Dunst-Berge (wandern am langsamsten), davor hohe, schroffe Berge mit Schneekappen auf den höchsten Gipfeln, ganz vorne dunklere Berge. Dazu eine Waldlinie am Horizont und treibende Wolken.
 
 Sprites (alle selbst per Code gezeichnet, in `js/sprites.js`):
-- fest (harter Aufprall): Fichte gross und klein (je 2 Varianten), Laubbaum (2), Fels (2 Formen), Temposchild (80, 60, 50, 40; die Zahlen kommen aus einer kleinen 3x5-Pixelschrift), Wegweiser, Holzzaun, Kuh (2)
+- fest (harter Aufprall): Fichte gross und klein (je 2 Varianten), Laubbaum (2), Fels (2 Formen), Temposchild (80, 60, 50, 40; die Zahlen kommen aus einer kleinen 3x5-Pixelschrift), Wegweiser, Kuh (2)
 - weich (bremst nur): Busch (2)
-- Leitplanke und Felswand sind keine Bilder, sondern werden wie die Strasse als Flächen gezeichnet (zählen beim Aufprall aber als fest).
+- Leitplanke, Holzzaun und Hang sind keine Bilder, sondern werden wie die Strasse als Flächen gezeichnet (zählen beim Aufprall aber als fest). Nur ihre Pfosten sind kleine Bilder.
+- Bäume, Büsche und Felsen auf dem Hang zählen beim Aufprall nicht (man kommt wegen des Felsfusses gar nicht hin).
 
 ## Autos (Fantasienamen, Arbeitsnamen)
 Inspiriert von Gruppe-B-Legenden, aber mit erfundenen Namen und eigenem Design. Keine echten Marken, Logos oder Originaldesigns.
@@ -106,9 +109,9 @@ Am Anfang gibt es nur ein Platzhalter-Auto aus einfachen Formen. Richtige Autos 
 2.5. Kurven-Physik (Grenztempo, Untersteuern) und neue, dichtere Teststrecke mit sichtbaren Hügeln.
 3. Landschaft und Kollisionen: Bäume, Büsche, Felsen, Leitplanken, Schilder, Zäune, Kühe, Waldlinie und Wolken im Hintergrund – dicht wie bei V-Rally 3. Aufprall an festen Objekten.
 3.5. Überarbeitung: Leitplanke als durchgehendes Band, Temposchilder statt Kurvenschilder, Alpen-Gelände (Felswand, Abhang ins Tal), höhere Berge mit Schnee und ferne Dunst-Berge.
-4. Untergründe (Schotter, Wiese), Abzweigung mit Rally-Absperrung.
-5. Zeit, Checkpoints, Beifahrer.
-6. Tageszeiten, weitere Alpen-Optik.
-7. Menü, Autoauswahl, richtige Auto-Sprites.
-8. Sound und Musik.
-9. Mehrere Strecken, Bestzeiten.
+3.6. Überarbeitung: gemeinsame Band-Funktion (Leitplanke, Holzzaun als durchgehendes Band), Felswand wird zum Hang mit Felsfuss, bewachsener Böschung und keilförmigen Enden.
+4. Untergründe (Schotter, Wiese), Abzweigung mit Rally-Absperrung, Zeit, Checkpoints, Beifahrer.
+5. Tageszeiten, weitere Alpen-Optik.
+6. Menü, Autoauswahl, richtige Auto-Sprites.
+7. Sound und Musik.
+8. Mehrere Strecken, Bestzeiten.

@@ -65,10 +65,10 @@ const SPRITE_FARBEN = {
 //              'innen' = die strassenseitige Kante steht auf dem Platz, das Bild
 //              geht nach aussen (Leitplanke, Zaun: so laufen sie dem Rand entlang)
 //   spiegeln:  true = darf zufällig gespiegelt werden (mehr Abwechslung)
-//   baum:      true = hoher Baum. Bäume stehen nie zwischen Strasse und Felswand
-//              und nie nahe am Abhang (siehe scenery.js).
+//   baum:      true = hoher Baum. Bäume stehen nie nahe am Abhang (siehe scenery.js).
 //   unsichtbar: true = wird nicht als Bild gezeichnet, zählt aber beim
-//              Zusammenstoss (Leitplanke: wird als Band gezeichnet, Wand: als Felswand)
+//              Zusammenstoss (Leitplanke und Zaun: werden als Band gezeichnet,
+//              Hang: als Flächen)
 //   varianten: ein oder mehrere Pixelraster (zufällig ausgewählt)
 const SPRITE_DATEN = {
   fichte_gross: {
@@ -291,9 +291,9 @@ const SPRITE_DATEN = {
   // gab das Treppenstufen, weil jedes Bild flach zur Kamera schaut und nicht
   // der Strasse folgen kann. Geblieben ist ein Eintrag pro 2 m für den
   // Zusammenstoss, und das Raster ist jetzt der dunkle Pfosten, der alle
-  // PFOSTEN_ALLE Meter unter dem Band steht.
+  // pfostenAlle Meter unter dem Band steht (siehe BAENDER in config.js).
   leitplanke: {
-    hoehe: 0.8, fest: true, kollision: 0.5, laenge: 2, anker: 'innen', spiegeln: false, unsichtbar: true,
+    hoehe: 0.8, fest: CONFIG.BAENDER.leitplanke.fest, kollision: 0.5, laenge: 2, anker: 'innen', spiegeln: false, unsichtbar: true,
     varianten: [
       [
         'RK',
@@ -308,9 +308,9 @@ const SPRITE_DATEN = {
     ],
   },
 
-  // Felswand: nur für den Zusammenstoss (ein Eintrag pro 2 m). Gezeichnet
-  // wird die Wand als durchgehende Fläche in render.js.
-  wand: {
+  // Felsfuss des Hangs: nur für den Zusammenstoss (ein Eintrag pro 2 m).
+  // Gezeichnet wird der Hang als Flächen in render.js.
+  hang: {
     hoehe: 1, fest: true, kollision: 1.0, laenge: 2, anker: 'innen', spiegeln: false, unsichtbar: true,
     varianten: [['K']],
   },
@@ -347,24 +347,26 @@ const SPRITE_DATEN = {
     ],
   },
 
-  // Ein 4 m langes Stück Weidezaun (zwei Pfosten, zwei Latten). Steht wie
-  // die Leitplanke alle 2 m, die Bilder überlappen sich.
+  // Holzzaun: wird seit Meilenstein 3.6 wie die Leitplanke als durchgehendes
+  // Band gezeichnet (zwei Latten, siehe BAENDER in config.js). Früher stand hier
+  // ein 4 m langes Zaun-Bild alle 2 m; in Kurven gab das Treppenstufen, weil
+  // jedes Bild flach zur Kamera schaut. Geblieben ist ein Eintrag pro 2 m für
+  // den Zusammenstoss, und das Raster ist jetzt der Holzpfosten, der alle
+  // pfostenAlle Meter unter den Latten steht (oben heller Schnitt, unten dunkel).
   zaun: {
-    hoehe: 1.2, fest: true, kollision: 0.4, laenge: 2, anker: 'innen', spiegeln: false,
+    hoehe: 1.0, fest: CONFIG.BAENDER.zaun.fest, kollision: 0.4, laenge: 2, anker: 'innen', spiegeln: false, unsichtbar: true,
     varianten: [
       [
-        '.UT..................UT.................',
-        '.UT..................UT.................',
-        'UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU',
-        'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-        '.UT..................UT.................',
-        '.UT..................UT.................',
-        'UUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUUU',
-        'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-        '.UT..................UT.................',
-        '.UT..................UT.................',
-        '.UT..................UT.................',
-        '.ST..................ST.................',
+        'UU',
+        'UT',
+        'UT',
+        'UT',
+        'UT',
+        'UT',
+        'UT',
+        'UT',
+        'UT',
+        'ST',
       ],
     ],
   },
