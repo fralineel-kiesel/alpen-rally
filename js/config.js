@@ -204,25 +204,57 @@ const CONFIG = {
   // oben eine bewachsene Böschung. Jeder Punkt des Querschnitts (von innen nach aussen):
   //   seite: Abstand vom Bankettrand, in Strassenbreiten (1 = 8 m)
   //   hoehe: Höhe über der Strasse, in Strassenbreiten
-  // Zwischen zwei Punkten liegt jeweils ein Band mit eigener Farbe (FARBEN.HANG_BAENDER).
+  // Zwischen zwei Punkten liegt jeweils ein Band mit eigener Farbe (FARBEN.HANG_BAENDER,
+  // hinter dem Kamm FARBEN.HANG_FLANKE je nach Umgebung).
   // Wichtig: Jeder Punkt muss von der Kamera aus gesehen "über" dem vorigen liegen, sonst
   // versteckt der Fels die Böschung dahinter. Faustregel: (hoehe * 8 - 2.5) / (seite * 8 + 4.8)
   // muss von Punkt zu Punkt grösser werden. (Ein Fels, der 14 m hoch ist und oben flach wird,
   // verdeckt von der Strasse aus alles, was darüber liegt: Dann sieht der Hang wieder wie
   // eine Wand aus, mit Baumspitzen dahinter. Darum ist der Fels hier niedriger als im
   // ersten Entwurf, und die Böschung steigt kräftig weiter an.)
+  // Hinter dem Kamm (P4) geht der Berg als Flanke weiter hinauf bis zum Grat (P6). Dahinter
+  // fällt er wieder etwas ab (P7, Rückseite des Grats), und von dort geht es waagrecht bis an
+  // den Bildrand: Auf der Hangseite gibt es kein "dahinter" mehr, über der Flanke sieht man
+  // nur noch Himmel und die Berge im Hintergrund.
+  // Faustregel nachgerechnet: P3 0,63 · P4 0,71 · P5 1,01 · P6 1,32 (P6 auch mit 10 %
+  // Rauschen nach unten noch 1,19). Der Vorschlag P6 (14 | 16) ergab nur 1,07, mit
+  // Rauschen sogar weniger als P5: Dann hätte P5 die oberste Flanke verdeckt.
+  // P7 ist die einzige gewollte Ausnahme: Er liegt hinter dem Grat und ist von der Strasse
+  // aus nicht zu sehen. Er sorgt dafür, dass ein Berg von weitem (in Kurven, von einem
+  // anderen Abschnitt aus) einen Grat hat und nicht wie ein Tafelberg mit schnurgerader
+  // Oberkante aussieht.
   HANG_PROFIL: [
     { seite: 0.15, hoehe: 0.0 },  // P0: Ende des schmalen Streifens Geröll/Gras am Bankett
     { seite: 0.35, hoehe: 0.45 }, // P1: Oberkante des steilen Felsfusses (3,6 m hoch)
     { seite: 0.65, hoehe: 0.85 }, // P2: Oberkante des helleren Gesteins (bis hier Fels, 6,8 m)
     { seite: 1.6,  hoehe: 1.7 },  // P3: Oberkante der Böschung (Wiese)
     { seite: 3.2,  hoehe: 3.0 },  // P4: Hangkamm (Waldboden), 24 m über der Strasse
+    { seite: 6,    hoehe: 7 },    // P5: untere Bergflanke, 56 m hoch
+    { seite: 12,   hoehe: 17 },   // P6: Grat, 136 m hoch
+    { seite: 20,   hoehe: 11 },   // P7: Rückseite des Grats (88 m hoch); von hier waagrecht bis zum Bildrand
   ],
+  HANG_KAMM: 4,                  // Nummer des Punkts, an dem die Böschung aufhört und die Flanke beginnt (P4). Bis hier Farben aus HANG_BAENDER, danach aus HANG_FLANKE.
+  HANG_GRAT: 6,                  // Nummer des höchsten Punkts (P6). Ab hier gilt das Rauschen (HANG_KAMM_RAUSCHEN), hier sitzt die Waldkante.
   // Keilförmige Enden: Am Anfang und Ende jedes Hang-Abschnitts wachsen Abstand und Höhe aller
-  // Punkte über so viele Meter weich von 0 auf 100 % (bei 0 liegt der Hang flach am Bankett).
-  // Folgt ein Abschnitt mit Hang auf derselben Seite, geht es ohne Unterbruch weiter.
-  HANG_UEBERGANG: 80,
-  HANG_KAMM_RAUSCHEN: 0.1,       // der Kamm ist bis zu so viel (0.1 = 10 %) höher oder tiefer, damit er nicht kerzengerade ist
+  // Punkte (auch Flanke und Verlängerung zum Bildrand) über so viele Meter weich von 0 auf
+  // 100 % (bei 0 liegt der Hang flach am Bankett). So läuft ein Hangende aus wie ein
+  // Bergrücken. Folgt ein Abschnitt mit Hang auf derselben Seite, geht es ohne Unterbruch weiter.
+  // Mit 80 m war das Ende des 136 m hohen Bergs zu steil (wie abgeschnitten), darum 120.
+  HANG_UEBERGANG: 120,
+  // Feld "hang_hoehe" in track.js (Faktor für alle Höhen des Hangs): Wechselt der Wert von
+  // einem Abschnitt zum nächsten, wird über so viele Meter weich übergeblendet (je die Hälfte
+  // vor und nach der Grenze, höchstens die halbe Länge des kürzeren Abschnitts).
+  HANG_HOEHE_UEBERGANG: 40,
+  HANG_KAMM_RAUSCHEN: 0.1,       // Grat und Rückseite sind bis zu so viel (0.1 = 10 %) höher oder tiefer, damit der Berg nicht kerzengerade ist
+  // Waldkante: Oben auf der Flanke (Umgebung wald und lichtung) eine gezackte Reihe
+  // Tannenspitzen, bei fels eine unregelmässige, felsige Kante. Bei wiese glatt.
+  WALDKANTE_BAUM_HOEHE: 9,       // so hoch (Meter) ragen die Tannenspitzen über die Flanke hinaus (jede Spitze zufällig 55-100 % davon)
+  WALDKANTE_BAUM_ABSTAND: 3.5,   // alle so viele Meter eine Tannenspitze
+  WALDKANTE_FELS_HOEHE: 11,      // so hoch (Meter) sind die Felszacken höchstens
+  WALDKANTE_FELS_ABSTAND: 7,     // so breit (Meter) ist ein Felszacken
+  WALDKANTE_BIS: 320,            // weiter weg (Meter) keine Zacken mehr (würden nur noch flimmern)
+  HANG_FLANKE_FLECKEN: 0.25,     // fels: Anteil der Strassenstücke mit einem grünen Flecken auf der Flanke
+  HANG_FLECKEN_BIS: 260,         // weiter weg (Meter) keine grünen Flecken mehr auf der Flanke
   // Gesteinsschichten: dünne, leicht schräge Farbbänder im Fels. band = in welchem Band
   // (1 = Felsfuss P0-P1, 2 = helleres Gestein P1-P2), von/bis = Lage im Band (0 = unten, 1 = oben).
   // Höchstens 3 Schichten, sie dürfen sich im selben Band nicht überlappen.
@@ -240,7 +272,7 @@ const CONFIG = {
   // Rechenzeit sparen in der Ferne:
   HANG_DETAIL_BIS: 120,          // weiter weg als so viele Meter: keine Gesteinsschichten, Risse und Grasflecken mehr
   HANG_GRUPPE_AB: 40,            // weiter weg: ein Viereck pro Farbstreifen (4 Stücke = 8 m) statt pro Stück
-  HANG_EINFACH_AB: 200,          // weiter weg (100 Stücke): nur noch 2 Bänder (Fels und Böschung) statt 5
+  HANG_EINFACH_AB: 200,          // weiter weg (100 Stücke): unten nur noch 2 Bänder (Fels und Böschung) statt 5; die Flanke bleibt
   // Abhang (Talseite)
   TAL_RANDSTREIFEN: 2.2,         // Meter Gras zwischen Bankett und Abbruchkante (dort stehen Leitplanke und Schilder)
   TAL_TIEFE: 35,                 // so viele Meter tiefer als die Strasse liegt der Talboden
@@ -330,6 +362,18 @@ const CONFIG = {
       ['#6f6c69', '#696663'],      // kühles Grau
       ['#a39b8e', '#9a9285'],      // hell
     ],
+    // Bergflanke hinter dem Kamm, je nach Umgebung des Abschnitts. Pro Umgebung zwei Bänder
+    // (P4-P5, und P5-P6 samt Rückseite und Verlängerung zum Bildrand), jedes [hell, dunkel]
+    // wie die anderen Bänder.
+    HANG_FLANKE: {
+      wald:     [['#28502d', '#244a29'], ['#21452a', '#1e4026']],  // dunkles Tannengrün
+      lichtung: [['#2c5530', '#284f2c'], ['#24482b', '#214327']],  // wie wald, minim heller
+      fels:     [['#7a7064', '#72685d'], ['#6c6359', '#655c52']],  // Grau-Braun
+      wiese:    [['#4f8f36', '#4a8833'], ['#47852f', '#43802d']],  // Grün wie die Böschung
+    },
+    HANG_FLANKE_FLECK: '#55783a',  // fels: vereinzelte grüne Flecken auf der Flanke
+    WALDKANTE_TANNE: '#1a3822',    // Tannenspitzen oben auf der Flanke (wald, lichtung)
+    WALDKANTE_FELS: '#5e564d',     // Felszacken oben auf der Flanke (fels)
     HANG_RISS: '#3a332d',          // dunkle Risse im Fels
     HANG_GRAS: '#5d8f3a',          // Grasflecken im Gestein
     // Abhang und Tal

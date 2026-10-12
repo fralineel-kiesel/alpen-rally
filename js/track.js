@@ -33,6 +33,15 @@
 //           wachsen an den Abschnittsgrenzen weich heraus, der Hang als Keil
 //           (HANG_UEBERGANG und GELAENDE_UEBERGANG in config.js).
 //           Einstellungen zu Hang und Tal: ebenfalls config.js.
+//           Seit Meilenstein 3.7 ist der Hang ein Berg: Hinter dem Kamm steigt
+//           eine Bergflanke weiter an, bis zum Bildrand.
+//   hang_hoehe: (freiwillig) wie hoch der Hang in diesem Abschnitt ist, als
+//           Faktor. 1 = volle Höhe (Standard, wenn man es weglässt),
+//           0.6 = alles 60 % so hoch, 0 = flach. Wirkt nur, wo ein Hang ist.
+//           Wozu? Ein hoher Berg innen in einer Kurve verdeckt die Strasse
+//           dahinter, man fährt "blind" in die Kurve. Mit einem kleineren
+//           Wert sieht man mehr. Zwischen zwei Abschnitten mit verschiedenen
+//           Werten wird weich übergeblendet (HANG_HOEHE_UEBERGANG in config.js).
 //
 // Tipps:
 // - Die Strecke ist ein Rundkurs: Nach dem letzten Abschnitt kommt wieder
@@ -51,7 +60,7 @@ const STRECKE = [
   { name: 'Gerade bergauf',             laenge:  80, kurve:  0, hoehe:    6,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
   { name: 'Rechts 4',                   laenge:  80, kurve:  4, hoehe:    3,    umgebung: 'wald',              gelaende: 'wand_rechts_tal_links' },
   { name: 'Links 4',                    laenge:  70, kurve: -4, hoehe:    0,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
-  { name: 'Haarnadel links',            laenge:  70, kurve: -6, hoehe:    8,    umgebung: 'fels',              gelaende: 'wand_links_tal_rechts' },
+  { name: 'Haarnadel links',            laenge:  70, kurve: -6, hoehe:    8,    umgebung: 'fels',              gelaende: 'wand_links_tal_rechts', hang_hoehe: 0.6 },
   { name: 'Aufstieg',                   laenge: 150, kurve:  0, hoehe:   14,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
   { name: 'Rechts 3 weit',              laenge: 140, kurve:  3, hoehe:    6,    umgebung: 'lichtung',          gelaende: 'tal_links' },
   { name: 'Kuppe hoch',                 laenge: 100, kurve:  0, hoehe:   12,    umgebung: 'wiese',             gelaende: 'tal_links' },
@@ -62,13 +71,13 @@ const STRECKE = [
   { name: 'S rechts',                   laenge:  60, kurve:  3, hoehe:    0,    umgebung: 'wald',              gelaende: 'keins' },
   { name: 'S links eng',                laenge:  60, kurve: -4, hoehe:   -2,    umgebung: 'wald',              gelaende: 'keins' },
   { name: 'Gefälle gerade',             laenge: 200, kurve:  0, hoehe:  -22,    umgebung: 'wald', dichte: 1.5, gelaende: 'wand_rechts_tal_links' },
-  { name: 'Haarnadel rechts bergab',    laenge:  70, kurve:  6, hoehe:   -8,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links' },
+  { name: 'Haarnadel rechts bergab',    laenge:  70, kurve:  6, hoehe:   -8,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links', hang_hoehe: 0.6 },
   { name: 'Senke runter',               laenge: 100, kurve:  0, hoehe:  -14,    umgebung: 'wiese',             gelaende: 'keins' },
   { name: 'Senke hoch',                 laenge: 100, kurve:  0, hoehe:   14,    umgebung: 'wiese',             gelaende: 'keins' },
   { name: 'Rechts 5',                   laenge:  70, kurve:  5, hoehe:    2,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links' },
   { name: 'Links 2',                    laenge: 120, kurve: -2, hoehe:    0,    umgebung: 'lichtung',          gelaende: 'keins' },
   { name: 'Schnelle Gerade bergab',     laenge: 250, kurve:  0, hoehe:  -18,    umgebung: 'lichtung',          gelaende: 'tal_rechts' },
   { name: 'Links 4',                    laenge:  80, kurve: -4, hoehe:   -4,    umgebung: 'wald',              gelaende: 'wand_links_tal_rechts' },
-  { name: 'Kehre rechts',               laenge:  70, kurve:  6, hoehe:   -6,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links' },
+  { name: 'Kehre rechts',               laenge:  70, kurve:  6, hoehe:   -6,    umgebung: 'fels',              gelaende: 'wand_rechts_tal_links', hang_hoehe: 0.6 },
   { name: 'Rückweg zum Start',          laenge: 200, kurve:  0, hoehe: 'auto',  umgebung: 'wiese',             gelaende: 'keins' },
 ];

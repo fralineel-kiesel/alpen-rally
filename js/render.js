@@ -7,13 +7,16 @@
 //  1. Himmel, Wolken, drei Berg-Ebenen, Waldlinie
 //  2. Grund: Gras, oder (wenn irgendwo ein Abhang offen ist) Dunst-Landschaft
 //     und Talboden, von fern nach nah
-//  3. Strasse mit Bankett und Gras, von nah nach fern (verdeckt alles
-//     Tiefere dahinter, z. B. hinter Kuppen)
-//  4. Pro Strassenstück von fern nach nah: zuerst die Flächen des Hangs,
-//     dann alles, was auf diesem Stück steht, von aussen nach innen
-//     (Bäume auf dem Hang, Objekte hinter dem Band, Band mit Pfosten,
-//     übrige Objekte). So verdeckt jedes nähere Stück alles dahinter.
-//  5. Auto, Anzeigen, Debug
+//  3. Pro Strassenstück von fern nach nah ("Maleralgorithmus"): zuerst
+//     Strasse mit Bankett und Gras, dann die Flächen des Hangs (mit Flanke
+//     bis zum Bildrand und Waldkante), dann alles, was auf diesem Stück
+//     steht, von aussen nach innen (Bäume auf dem Hang, Objekte hinter dem
+//     Band, Band mit Pfosten, übrige Objekte). So verdeckt jedes nähere
+//     Stück alles dahinter, auch den Hang hinter einer Kuppe.
+//     Welche Bildzeilen jedes Stück Strasse bekommt, wird vorher von nah
+//     nach fern ausgerechnet (siehe strasse()), damit ganz hinten am
+//     Horizont keine Lücken entstehen.
+//  4. Auto, Anzeigen, Debug
 
 // Berg-Silhouetten als Liste von Punkten [x im Bild, Höhe über dem Horizont].
 // Zwischen den Punkten wird gerade verbunden. Erster und letzter Punkt sind
@@ -151,6 +154,17 @@ const Render = {
   hangY: [],
   hangSeite: [false, false], // ist in diesem Bild links / rechts irgendwo ein Hang?
   ebene: [],            // Hilfsliste für objekteVorbereiten (alles auf einem Stück)
+  // Nachträge für die Strasse ganz hinten (Stücke dünner als ein Pixel, siehe
+  // strasse()). Werden in jedem Bild wiederverwendet.
+  nachtraege: [],
+  nachAnzahl: 0,
+  // Waldkante: Für jede Bildspalte und Seite die Oberkante des Bergs (y), welches
+  // Stück sie bildet (Nummer in "sichtbar", -1 = keins), wo das in der Welt ist
+  // (Meter, damit die Zacken beim Fahren nicht flimmern) und der Massstab dort.
+  kanteY: [new Float32Array(CONFIG.BREITE), new Float32Array(CONFIG.BREITE)],
+  kanteN: [new Int16Array(CONFIG.BREITE), new Int16Array(CONFIG.BREITE)],
+  kanteA: [new Float32Array(CONFIG.BREITE), new Float32Array(CONFIG.BREITE)],
+  kanteM: [new Float32Array(CONFIG.BREITE), new Float32Array(CONFIG.BREITE)],
 
   start(ctx) {
     this.ctx = ctx;
@@ -166,9 +180,11 @@ const Render = {
     this.dunst = this.dunstVorzeichnen();
     this.talFarben = this.talFarbenMischen(); // setzt auch hangFarben
     this.wolkenX = CONFIG.WOLKEN.map((w) => w.x);
+    // Ein Platz mehr als der Querschnitt Punkte hat: die Verlängerung bis zum Bildrand
+    const plaetze = Scenery.hangPunkte + 1;
     for (let n = 0; n <= CONFIG.SICHTWEITE; n++) {
-      this.hangX.push([new Float32Array(Scenery.hangPunkte), new Float32Array(Scenery.hangPunkte)]);
-      this.hangY.push([new Float32Array(Scenery.hangPunkte), new Float32Array(Scenery.hangPunkte)]);
+      this.hangX.push([new Float32Array(plaetze), new Float32Array(plaetze)]);
+      this.hangY.push([new Float32Array(plaetze), new Float32Array(plaetze)]);
     }
   },
 
@@ -225,9 +241,10 @@ const Render = {
     this.berge(this.bergVorne, this.bergVersatzVorne);
     this.waldlinieZeichnen();
     this.strasse();
-    // Hang, Bänder und Objekte von weit nach nah zeichnen, damit nahe
-    // die fernen überdecken. Das Auto kommt dazwischen: alles hinter dem
-    // Auto zuerst, dann das Auto, dann was noch näher an der Kamera ist.
+    // Strasse, Hang, Bänder und Objekte von weit nach nah zeichnen, damit
+    // nahe die fernen überdecken. Das Auto kommt dazwischen: alles hinter dem
+    // Auto zuerst (und die ganze Strasse), dann das Auto, dann was noch näher
+    // an der Kamera ist.
     const liste = this.objekteVorbereiten();
     this.objekteZeichnen(liste, true);
     this.auto();
@@ -351,12 +368,18 @@ const Render = {
       ctx.fillRect(0, horizont, CONFIG.BREITE, CONFIG.HOEHE - horizont);
     }
 
-    // 3) Strasse von nah nach fern.
-    // Bis zu welcher Bildzeile (von unten) schon gezeichnet ist.
-    // Wir zeichnen von nah nach fern und nur, was höher liegt als diese
-    // Zeile. Was hinter einer Kuppe tiefer liegt, wird so automatisch
-    // verdeckt und taucht erst wieder auf, wenn es höher liegt.
+    // 3) Strasse von nah nach fern: Hier wird nur ausgerechnet, welche
+    // Bildzeilen jedes Stück bekommt. Gezeichnet wird später, von fern nach
+    // nah zusammen mit Hang und Objekten (strasseStueck). So verdeckt die
+    // Strasse vor einer Kuppe auch den Hang dahinter genau dort, wo sie liegt,
+    // und der Hang bleibt über der Kuppe sichtbar.
+    // maxY: bis zu welcher Bildzeile (von unten) nähere Stücke schon alles
+    // belegen. Ein Stück bekommt nur Zeilen darüber. Was hinter einer Kuppe
+    // tiefer liegt, bekommt keine Zeilen und taucht erst wieder auf, wenn es
+    // höher liegt.
     let maxY = CONFIG.HOEHE;
+    let besitzer = null; // Stück, dem die Zeile maxY gehört (Nachträge kommen zu ihm)
+    this.nachAnzahl = 0;
 
     for (let n = 0; n < anzahl; n++) {
       const e = sichtbar[n];
@@ -364,25 +387,31 @@ const Render = {
       const nah = e.nah;
       const fern = e.fern;
 
-      // Für Hang, Bänder und Objekte merken: "clip" ist die oberste
-      // Bildzeile, die nähere Stücke schon belegen. Alles von diesem Stück,
-      // was tiefer liegt, ist hinter einer Kuppe versteckt.
+      // "clip" ist die oberste Bildzeile, die nähere Stücke schon belegen.
+      // Bänder und Objekte auf Strassenhöhe werden dort abgeschnitten.
       e.clip = maxY;
+      e.zeileVon = 0;
+      e.zeileBis = 0;
+      e.nachVon = 0;
+      e.nachBis = 0;
       if (maxY <= 0) continue; // das ganze Bild ist schon voll
 
       const oben = Math.max(Math.round(fern.y), 0);
       const unten = Math.min(Math.round(nah.y), maxY);
       if (unten > oben) {
-        this.stueckZeichnen(e, oben, unten);
-        // Ragt das nahe Ende noch ein Stück in die schon gezeichnete Zeile
+        e.zeileVon = oben;
+        e.zeileBis = unten;
+        // Ragt das nahe Ende noch ein Stück in die schon belegte Zeile
         // darunter, auch diesen Rest nachtragen. Sonst bleibt dort, wo die
         // Strasse fast waagrecht läuft, eine Lücke von ein, zwei Pixeln.
         if (unten === maxY && maxY < CONFIG.HOEHE && nah.y > unten) {
           const x1 = this.mitteBei(nah, fern, unten);
           const x2 = this.mitteBei(nah, fern, Math.min(nah.y, unten + 1));
-          this.asphaltNachtragen(stueck, Math.min(x1, x2), Math.max(x1, x2), nah.massstab, unten);
+          this.nachtragMerken(besitzer, stueck, Math.min(x1, x2), Math.max(x1, x2), nah.massstab, unten);
         }
         maxY = oben;
+        besitzer = e;
+        e.nachVon = e.nachBis = this.nachAnzahl;
       } else if (oben === maxY && maxY < CONFIG.HOEHE) {
         // Weit hinten ist ein Stück oft weniger als ein Pixel hoch. Früher
         // fiel es dann einfach weg. In einer Kurve läuft die ferne Strasse
@@ -393,9 +422,29 @@ const Render = {
         // Liegt das nahe Ende tiefer als diese Zeile, ist es hinter einer
         // Kuppe verdeckt. Dann zählt nur das ferne Ende.
         const vonX = Math.round(nah.y) === maxY ? nah.x : fern.x;
-        this.asphaltNachtragen(stueck, Math.min(vonX, fern.x), Math.max(vonX, fern.x), fern.massstab, maxY);
+        this.nachtragMerken(besitzer, stueck, Math.min(vonX, fern.x), Math.max(vonX, fern.x), fern.massstab, maxY);
       }
       // Sonst: liegt hinter einer Kuppe und ist verdeckt.
+    }
+  },
+
+  // Einen Nachtrag (Asphalt in einer schon belegten Zeile) merken. Er gehört zum
+  // Stück "besitzer", dem die Zeile gehört, und wird direkt nach dessen Zeilen
+  // gezeichnet (sonst würde dessen Gras ihn wieder übermalen).
+  nachtragMerken(besitzer, stueck, x1, x2, m, y) {
+    if (!this.nachtraege[this.nachAnzahl]) this.nachtraege[this.nachAnzahl] = {};
+    const r = this.nachtraege[this.nachAnzahl++];
+    r.stueck = stueck; r.x1 = x1; r.x2 = x2; r.m = m; r.y = y;
+    besitzer.nachBis = this.nachAnzahl;
+  },
+
+  // Die Zeilen eines Strassenstücks zeichnen (siehe strasse()), dazu die
+  // Nachträge der ferneren, dünnen Stücke in seiner obersten Zeile.
+  strasseStueck(e) {
+    if (e.zeileBis > e.zeileVon) this.stueckZeichnen(e, e.zeileVon, e.zeileBis);
+    for (let i = e.nachVon; i < e.nachBis; i++) {
+      const r = this.nachtraege[i];
+      this.asphaltNachtragen(r.stueck, r.x1, r.x2, r.m, r.y);
     }
   },
 
@@ -436,7 +485,12 @@ const Render = {
       versatz += neigung * strecke + stueck.kruemmung * strecke * strecke / 2;
       neigung += stueck.kruemmung * strecke;
 
-      if (!this.sichtbar[n]) this.sichtbar[n] = this.neuerEintrag();
+      if (!this.sichtbar[n]) {
+        const neu = this.neuerEintrag();
+        neu.strasseEintrag = { typ: 'strasse', s: neu, abstand: 0 };
+        neu.hangEintrag = { typ: 'hang', s: neu, abstand: 0 };
+        this.sichtbar[n] = neu;
+      }
       const e = this.sichtbar[n];
       e.n = n;
       e.stueck = stueck;
@@ -498,6 +552,11 @@ const Render = {
           X[j] = B / 2 + (mitte + seite * U[j] - this.kameraX) * m;
           Y[j] = this.horizont + (this.kameraY - boden - H[j]) * m;
         }
+        // Verlängerung: vom letzten Punkt waagrecht bis über den Bildrand hinaus
+        // (gleiche Höhe = in der Welt eine waagrechte Linie, im Bild auch)
+        const letzter = U.length - 1;
+        X[letzter + 1] = seite < 0 ? Math.min(X[letzter], -2) : Math.max(X[letzter], B + 2);
+        Y[letzter + 1] = Y[letzter];
       }
     }
   },
@@ -506,6 +565,9 @@ const Render = {
     return {
       n: 0, stueck: null, abstand: 0, nahZ: 0, fernZ: 0, mitteNah: 0, mitteFern: 0,
       bodenNah: 0, bodenFern: 0, clip: 0,
+      zeileVon: 0, zeileBis: 0, nachVon: 0, nachBis: 0, // Bildzeilen der Strasse, Nachträge (siehe strasse())
+      kanteVon: [0, 0], kanteBis: [0, 0], // Bildspalten der Waldkante [links, rechts]
+      strasseEintrag: null, hangEintrag: null, // wiederverwendete Einträge für objekteVorbereiten
       nah: { x: 0, y: 0, massstab: 0 }, fern: { x: 0, y: 0, massstab: 0 },
       // [links, rechts]
       hangNah: [0, 0], hangFern: [0, 0], talNah: [0, 0], talFern: [0, 0],
@@ -636,7 +698,7 @@ const Render = {
   // sind. Ergebnis: Liste von nah nach fern (wird rückwärts gezeichnet).
   // Höchstens MAX_OBJEKTE Bilder, die nächsten zuerst: Fällt etwas weg,
   // dann ganz hinten, wo es kaum auffällt.
-  // Dazwischen stehen Einträge für Hang und Bänder (Leitplanke, Zaun)
+  // Dazwischen stehen Einträge für Strasse, Hang und Bänder (Leitplanke, Zaun)
   // des jeweiligen Stücks, damit auch sie richtig von fern nach nah gezeichnet werden.
   objekteVorbereiten() {
     const liste = [];
@@ -644,6 +706,7 @@ const Render = {
     const rand = CONFIG.STRASSE_HALBE_BREITE + CONFIG.BANKETT_BREITE;
     const ebene = this.ebene;
     let bilder = 0;
+    this.waldkanteVorbereiten();
     for (let n = 0; n < this.anzahlSichtbar; n++) {
       const s = this.sichtbar[n];
       if (s.clip <= 0) break; // ab hier ist alles verdeckt
@@ -672,8 +735,10 @@ const Render = {
           const w = Math.max(1, Math.round(links + breite) - x);
           const h = Math.max(1, Math.round(bodenY) - y);
           if (x >= B || x + w <= 0 || y >= CONFIG.HOEHE) continue; // neben dem Bild
-          // Hinter einer Kuppe: nur den Teil über der Clip-Linie zeigen
-          const sichtbarH = Math.min(h, s.clip - y);
+          // Hinter einer Kuppe: nur den Teil über der Clip-Linie zeigen. Was auf
+          // Hang oder Flanke steht (boden > 0), nicht abschneiden: Es liegt höher
+          // als die Strasse, und was davor liegt, wird ohnehin später darüber gezeichnet.
+          const sichtbarH = o.boden > 0 ? h : Math.min(h, s.clip - y);
           if (sichtbarH <= 0) continue;
           ebene.push({ o: o, x: x, y: y, w: w, h: h, sichtbarH: sichtbarH, abstand: s.abstand, tiefe: Math.abs(o.x) });
           if (++bilder >= CONFIG.MAX_OBJEKTE) break;
@@ -694,8 +759,11 @@ const Render = {
       // Stücke weiter beginnt: In der Ferne zeichnet ein Stück den Hang für
       // seinen ganzen Farbstreifen, siehe hangZeichnen.)
       if (this.hangInDerNaehe(st.index)) {
-        liste.push({ typ: 'hang', s: s, abstand: s.abstand });
+        s.hangEintrag.abstand = s.abstand;
+        liste.push(s.hangEintrag);
       }
+      // Die Strasse dieses Stücks liegt unter allem: als Erstes gezeichnet
+      liste.push(s.strasseEintrag);
     }
     this.objekteGezeichnet = bilder;
     return liste;
@@ -706,6 +774,11 @@ const Render = {
   objekteZeichnen(liste, hinterAuto) {
     for (let i = liste.length - 1; i >= 0; i--) {
       const e = liste[i];
+      // Die Strasse kommt immer vor dem Auto (es fährt ja darauf)
+      if (e.typ === 'strasse') {
+        if (hinterAuto) this.strasseStueck(e.s);
+        continue;
+      }
       if ((e.abstand >= Road.autoAbstand) !== hinterAuto) continue;
       if (e.typ === 'hang') {
         this.hangZeichnen(e.s);
@@ -726,57 +799,285 @@ const Render = {
 
   // --- Hang (Bergseite) ---
   // Der Hang besteht aus mehreren Flächenbändern von der Strasse nach aussen
-  // und oben (Querschnitt aus HANG_PROFIL, siehe Scenery.hangQuerschnitt).
+  // und oben (Querschnitt aus HANG_PROFIL, siehe Scenery.hangQuerschnitt):
+  // Fels, Böschung, Kamm und dahinter die Bergflanke. Der letzte Punkt wird
+  // waagrecht bis an den Bildrand verlängert, darum gibt es auf der Hangseite
+  // kein "dahinter" mehr.
   // Jedes Band wird wie die Strasse gezeichnet: pro Strassenstück ein
   // Viereck vom Querschnitt am nahen Ende zum Querschnitt am fernen Ende.
   // Das nächste Stück beginnt genau an diesen Ecken. Weil nähere Stücke
-  // später gezeichnet werden, verdecken sie alles dahinter (Bäume, Tal,
-  // fernere Strasse). Hinter Kuppen wird abgeschnitten wie bei der Strasse.
+  // (auch ihre Strasse) später gezeichnet werden, verdecken sie alles
+  // dahinter. Darum braucht der Hang keine Clip-Linie: Über einer Kuppe
+  // bleibt er sichtbar, darunter malt die nähere Strasse ihn zu.
   // In der Ferne wird gespart: ab HANG_GRUPPE_AB ein Viereck pro Farbstreifen
   // (4 Stücke) statt pro Stück, ab HANG_DETAIL_BIS ohne Schichten, Risse und
-  // Gras, ab HANG_EINFACH_AB nur noch 2 Bänder (Fels und Böschung).
+  // Gras, ab HANG_EINFACH_AB unten nur noch 2 Bänder (Fels und Böschung).
   hangZeichnen(e) {
     const f = CONFIG.FARBEN;
     const n = e.n;
     const st = e.stueck;
-    // Wie viele Stücke zeichnet dieses Stück? Nah: nur sich selbst. Fern: den
-    // Rest seines Farbstreifens. Die ferneren Stücke im selben Streifen
-    // zeichnen dann nichts (das nächste Stück des Streifens kommt zuletzt dran).
-    let k = 1;
-    if (e.nahZ > CONFIG.HANG_GRUPPE_AB) {
-      const imStreifen = st.index % CONFIG.STREIFEN_LAENGE;
-      if (imStreifen !== 0 && n > 0 && this.sichtbar[n - 1].nahZ > CONFIG.HANG_GRUPPE_AB) return;
-      k = Math.min(CONFIG.STREIFEN_LAENGE - imStreifen, this.anzahlSichtbar - n);
-    }
-    const clip = Math.min(e.clip, CONFIG.HOEHE);
+    const k = this.hangEinheit(n);
+    const flanke = this.flankeEinheit(n); // setzt this.flankeA / this.flankeB
+    if (k === 0 && !flanke) return;
+    const fa = this.flankeA, fb = this.flankeB;
+    const H = CONFIG.HOEHE;
     const dunkel = st.hell ? 0 : 1;
     const p = Scenery.hangPunktNr;
     const flaechen = Scenery.hangFlaechen;
+    const letzter = Scenery.hangPunkte - 1;
+    const kamm = CONFIG.HANG_KAMM;
+    const flankeFarben = f.HANG_FLANKE[st.hangUmgebung] || f.HANG_FLANKE.wald;
+    // Farbe von Band b (zwischen Punkt b-1 und b): bis zum Kamm aus HANG_BAENDER,
+    // dahinter die Flanke je nach Umgebung
+    const farbe = (b) => (b <= kamm ? f.HANG_BAENDER[b][dunkel] :
+      flankeFarben[Math.min(b - kamm - 1, flankeFarben.length - 1)][dunkel]);
     for (let nr = 0; nr < 2; nr++) {
-      // Gibt es auf dieser Seite in diesem Bereich überhaupt einen Hang?
-      let da = false;
-      for (let j = 0; j <= k; j++) if (Road.stueck(st.index + j).hang[nr] > 0) da = true;
-      if (!da) continue;
+      // Flanke (alles hinter dem Kamm) und Verlängerung bis zum Bildrand,
+      // von Querschnitt fa bis fb. Von aussen nach innen.
+      if (flanke && this.hangDaVonBis(fa, fb, nr)) {
+        const xa = this.hangX[fa][nr], ya = this.hangY[fa][nr];
+        const xb = this.hangX[fb][nr], yb = this.hangY[fb][nr];
+        const band = (i, j, farbe) => this.flaeche(farbe,
+          xa[i], ya[i], xa[j], ya[j], xb[j], yb[j], xb[i], yb[i], H, false);
+        band(letzter, letzter + 1, farbe(p.length - 1));
+        if (this.sichtbar[fa].nahZ > CONFIG.HANG_DETAIL_BIS) {
+          // In der Ferne: Rückseite des Grats, dann die ganze Flanke vom Kamm bis
+          // zum Grat in einem Band (den Knick dazwischen sieht man dort nicht)
+          const grat = CONFIG.HANG_GRAT;
+          for (let b = p.length - 1; b > grat; b--) band(p[b - 1], p[b], farbe(b));
+          band(p[kamm], p[grat], farbe(grat));
+        } else {
+          for (let b = p.length - 1; b > kamm; b--) band(p[b - 1], p[b], farbe(b));
+        }
+        if (this.sichtbar[fa].nahZ <= CONFIG.HANG_FLECKEN_BIS) this.flankeFlecken(nr, fa, fb);
+        this.waldkanteZeichnen(e, nr, fa, fb);
+      }
+      if (k === 0 || !this.hangDa(n, k, nr)) continue;
+      // Fels, Böschung und Kamm, von Querschnitt n bis n + k
       const xa = this.hangX[n][nr], ya = this.hangY[n][nr];
       const xb = this.hangX[n + k][nr], yb = this.hangY[n + k][nr];
       // Ein Band zwischen Punkt i und j des Querschnitts als Viereck
       const band = (i, j, farbe) => this.flaeche(farbe,
-        xa[i], ya[i], xa[j], ya[j], xb[j], yb[j], xb[i], yb[i], clip, false);
+        xa[i], ya[i], xa[j], ya[j], xb[j], yb[j], xb[i], yb[i], H, false);
       // Von aussen nach innen: Liegt ein inneres Band im Bild vor einem
       // äusseren (z. B. Fels vor der Böschung), verdeckt es dieses richtig.
       if (e.nahZ > CONFIG.HANG_EINFACH_AB) {
-        band(p[2], p[4], f.HANG_BAENDER[3][dunkel]);
-        band(p[0], p[2], f.HANG_BAENDER[1][dunkel]);
+        band(p[2], p[kamm], farbe(3));
+        band(p[0], p[2], farbe(1));
       } else if (e.nahZ > CONFIG.HANG_DETAIL_BIS) {
-        for (let b = p.length - 1; b >= 0; b--) band(b === 0 ? 0 : p[b - 1], p[b], f.HANG_BAENDER[b][dunkel]);
+        for (let b = kamm; b >= 0; b--) band(b === 0 ? 0 : p[b - 1], p[b], farbe(b));
       } else {
-        for (let j = flaechen.length - 1; j >= 0; j--) {
+        for (let j = p[kamm] - 1; j >= 0; j--) {
           const fl = flaechen[j];
-          band(j, j + 1, fl.schicht >= 0 ? f.HANG_SCHICHTEN[fl.schicht][dunkel] : f.HANG_BAENDER[fl.band][dunkel]);
+          band(j, j + 1, fl.schicht >= 0 ? f.HANG_SCHICHTEN[fl.schicht][dunkel] : farbe(fl.band));
         }
-        if (k === 1) this.hangDetails(e, nr, clip);
+        if (k === 1) this.hangDetails(e, nr, H);
       }
     }
+  },
+
+  // Die Flanke wird auch in der Nähe nur pro Farbstreifen (4 Stücke = 8 m) als
+  // ein Viereck gezeichnet: Sie ist hoch und braucht als dünner Streifen pro
+  // 2-m-Stück sehr viele Zeichenbefehle, sieht aber gleich aus. Gezeichnet wird
+  // sie vom fernsten Stück des Streifens, also bevor die Bäume der näheren Stücke
+  // kommen (ein Baum auf der Böschung ragt im Bild in die Flanke dahinter, nie in
+  // die davor). In der Ferne gilt dieselbe Einteilung wie beim übrigen Hang.
+  // Zeichnet Stück n eine Flanke? Wenn ja: this.flankeA / this.flankeB = von welchem
+  // bis zu welchem Querschnitt (Platz in hangX / hangY).
+  // Ab HANG_EINFACH_AB werden je zwei Farbstreifen (16 m) zusammengefasst.
+  flankeEinheit(n) {
+    const e = this.sichtbar[n];
+    const S = CONFIG.STREIFEN_LAENGE;
+    if (e.nahZ > CONFIG.HANG_GRUPPE_AB) {
+      const i = e.stueck.index;
+      const vor = n > 0 ? this.sichtbar[n - 1] : null;
+      // Mitten im Streifen: gehört zur Gruppe des näheren Stücks davor
+      if (i % S !== 0 && vor && vor.nahZ > CONFIG.HANG_GRUPPE_AB) return false;
+      const G = e.nahZ > CONFIG.HANG_EINFACH_AB ? 2 * S : S;
+      if (i % G !== 0 && vor && vor.nahZ > CONFIG.HANG_EINFACH_AB) return false;
+      this.flankeA = n;
+      this.flankeB = Math.min(n + G - i % G, this.anzahlSichtbar);
+      return true;
+    }
+    const imStreifen = e.stueck.index % CONFIG.STREIFEN_LAENGE;
+    const naechstesFern = n + 1 >= this.anzahlSichtbar || this.sichtbar[n + 1].nahZ > CONFIG.HANG_GRUPPE_AB;
+    if (imStreifen !== CONFIG.STREIFEN_LAENGE - 1 && !naechstesFern) return false;
+    this.flankeA = Math.max(n - imStreifen, 0);
+    this.flankeB = n + 1;
+    return true;
+  },
+
+  // Wie viele Stücke zeichnet Stück n beim Hang? Nah: nur sich selbst (1). Fern:
+  // den Rest seines Farbstreifens. Die ferneren Stücke im selben Streifen
+  // zeichnen dann nichts (0); das nächste Stück des Streifens kommt zuletzt dran.
+  hangEinheit(n) {
+    const e = this.sichtbar[n];
+    if (e.nahZ <= CONFIG.HANG_GRUPPE_AB) return 1;
+    const imStreifen = e.stueck.index % CONFIG.STREIFEN_LAENGE;
+    if (imStreifen !== 0 && n > 0 && this.sichtbar[n - 1].nahZ > CONFIG.HANG_GRUPPE_AB) return 0;
+    return Math.min(CONFIG.STREIFEN_LAENGE - imStreifen, this.anzahlSichtbar - n);
+  },
+
+  // Gibt es auf Seite nr im Bereich von Stück n bis n + k überhaupt einen Hang?
+  hangDa(n, k, nr) {
+    const i = this.sichtbar[n].stueck.index;
+    for (let j = 0; j <= k; j++) if (Road.stueck(i + j).hang[nr] > 0) return true;
+    return false;
+  },
+
+  // Dasselbe für die Querschnitte a bis b
+  hangDaVonBis(a, b, nr) {
+    return this.hangDa(a, b - a, nr);
+  },
+
+  // Grüne Flecken auf der oberen Flanke (nur Umgebung fels), je Stück höchstens
+  // einer (Scenery: flankeFleck). Gerechnet direkt mit den Bildpunkten des
+  // Querschnitts (zwischen P5 und P6, und entlang der Strasse zwischen nahem und
+  // fernem Ende): einfach und schnell, und bei so kleinen Flecken genau genug.
+  flankeFlecken(nr, a, b) {
+    const p = Scenery.hangPunktNr;
+    const i = p[CONFIG.HANG_GRAT - 1], j = p[CONFIG.HANG_GRAT];
+    const xa = this.hangX[a][nr], ya = this.hangY[a][nr];
+    const xb = this.hangX[b][nr], yb = this.hangY[b][nr];
+    const pt = this.fleckPunkte;
+    const k = b - a;
+    const index = this.sichtbar[a].stueck.index;
+    for (let s = 0; s < k; s++) {
+      const st = Road.stueck(index + s);
+      if (!st.flankeFleck || st.hangUmgebung !== 'fels' || st.hang[nr] < 0.5) continue;
+      const [hVon, hBis] = st.flankeFleck;
+      let q = 0;
+      for (const [h, t] of [[hVon, 0.15], [hBis, 0.15], [hBis, 0.85], [hVon, 0.85]]) {
+        const anteil = (s + t) / k; // Lage entlang der Gruppe (0 = nahes, 1 = fernes Ende)
+        const xN = xa[i] + (xa[j] - xa[i]) * h, yN = ya[i] + (ya[j] - ya[i]) * h;
+        const xF = xb[i] + (xb[j] - xb[i]) * h, yF = yb[i] + (yb[j] - yb[i]) * h;
+        pt[q++] = xN + (xF - xN) * anteil;
+        pt[q++] = yN + (yF - yN) * anteil;
+      }
+      this.flaeche(CONFIG.FARBEN.HANG_FLANKE_FLECK, pt[0], pt[1], pt[2], pt[3], pt[4], pt[5], pt[6], pt[7], CONFIG.HOEHE, true);
+    }
+  },
+
+  // --- Waldkante ---
+  // Oben auf der Flanke eine gezackte Reihe Tannenspitzen (wald, lichtung) bzw.
+  // eine felsige Kante (fels). Zu sehen ist davon nur die oberste Kante des
+  // ganzen Bergs; die Kanten der anderen Stücke liegen unter näheren Flächen.
+  // Darum wird zuerst (vor dem Zeichnen) für jede Bildspalte ausgerechnet,
+  // welches Stück die oberste Kante bildet. Nur dieses Stück zeichnet dort eine
+  // Zacke, und zwar gleich nach seinen Hang-Flächen (dann verdeckt alles, was
+  // näher liegt, die Zacke richtig).
+  waldkanteVorbereiten() {
+    const B = CONFIG.BREITE;
+    const L = CONFIG.STUECK_LAENGE;
+    const grat = Scenery.hangPunktNr[CONFIG.HANG_GRAT];
+    const rand = Scenery.hangPunkte; // Platz der Verlängerung bis zum Bildrand
+    for (let nr = 0; nr < 2; nr++) {
+      if (!this.hangSeite[nr]) continue;
+      const Y = this.kanteY[nr], N = this.kanteN[nr], A = this.kanteA[nr], M = this.kanteM[nr];
+      Y.fill(Infinity);
+      N.fill(-1);
+      for (let n = 0; n < this.anzahlSichtbar; n++) {
+        const e = this.sichtbar[n];
+        if (e.clip <= 0) break; // ab hier zeichnet objekteVorbereiten nichts mehr
+        e.kanteVon[nr] = 0;
+        e.kanteBis[nr] = 0;
+        // (Auch Stücke weiter weg als WALDKANTE_BIS zählen hier mit: Sie bilden
+        // die Kante dort, haben nur keine Zacken.) Gleiche Einteilung wie beim
+        // Zeichnen der Flanke: Querschnitt fa bis fb, gezeichnet von Stück n.
+        if (!this.flankeEinheit(n)) continue;
+        const fa = this.flankeA, fb = this.flankeB, k = fb - fa;
+        if (!this.hangDaVonBis(fa, fb, nr)) continue;
+        const nah = this.sichtbar[fa], fern = this.sichtbar[fb - 1];
+        const mN = Road.brennweite / nah.nahZ, mF = Road.brennweite / fern.fernZ;
+        let von = B, bis = 0;
+        // Oberkante am nahen und am fernen Ende: Grat, Rückseite, waagrecht bis
+        // zum Bildrand. Lage in der Welt = Meter seitlich ab Strassenmitte.
+        for (let ende = 0; ende < 2; ende++) {
+          const X = this.hangX[ende ? fb : fa][nr], Yq = this.hangY[ende ? fb : fa][nr];
+          const m = ende ? mF : mN;
+          const mitte = ende ? fern.mitteFern : nah.mitteNah;
+          for (let j = grat; j < rand; j++) {
+            const x1 = X[j], x2 = X[j + 1];
+            const a = Math.max(Math.floor(Math.min(x1, x2)), 0);
+            const b = Math.min(Math.ceil(Math.max(x1, x2)), B);
+            for (let x = a; x < b; x++) {
+              const xm = x + 0.5;
+              if ((xm - x1) * (xm - x2) > 0) continue;
+              const y = Yq[j] + (Yq[j + 1] - Yq[j]) * (xm - x1) / (x2 - x1 || 1);
+              if (y < Y[x]) {
+                Y[x] = y; N[x] = n; M[x] = m;
+                A[x] = Math.abs((xm - B / 2) / m + this.kameraX - mitte);
+              }
+            }
+            von = Math.min(von, a);
+            bis = Math.max(bis, b);
+          }
+        }
+        // Grat zwischen nahem und fernem Ende. Lage in der Welt = Meter entlang der Strasse
+        const xn = this.hangX[fa][nr][grat], yn = this.hangY[fa][nr][grat];
+        const xf = this.hangX[fb][nr][grat], yf = this.hangY[fb][nr][grat];
+        const a = Math.max(Math.floor(Math.min(xn, xf)), 0);
+        const b = Math.min(Math.ceil(Math.max(xn, xf)), B);
+        for (let x = a; x < b; x++) {
+          const xm = x + 0.5;
+          if ((xm - xn) * (xm - xf) > 0) continue;
+          const t = (xm - xn) / (xf - xn || 1);
+          const y = yn + (yf - yn) * t;
+          // Gleich hoch: das nähere Stück gewinnt (es wird später gezeichnet)
+          if (y < Y[x]) {
+            Y[x] = y; N[x] = n; M[x] = mN + (mF - mN) * t;
+            A[x] = 1000 + (nah.stueck.index + t * k) * L;
+          }
+        }
+        e.kanteVon[nr] = Math.min(von, a);
+        e.kanteBis[nr] = Math.max(bis, b);
+      }
+    }
+  },
+
+  // Die Zacken der Waldkante für die Spalten, deren oberste Kante Stück e bildet
+  // (siehe waldkanteVorbereiten). Jede Zacke hat einen festen Platz in der Welt
+  // und eine feste, zufällige Höhe, darum flimmert beim Fahren nichts.
+  // Am Keilende (Hang erst wenig gewachsen) werden die Zacken kleiner.
+  waldkanteZeichnen(e, nr, a, b) {
+    const art = e.stueck.hangUmgebung;
+    const tanne = art === 'wald' || art === 'lichtung';
+    if ((!tanne && art !== 'fels') || e.nahZ > CONFIG.WALDKANTE_BIS || e.kanteBis[nr] <= e.kanteVon[nr]) return;
+    let wachstum = 0;
+    const index = this.sichtbar[a].stueck.index;
+    for (let j = 0; j <= b - a; j++) wachstum = Math.max(wachstum, Road.stueck(index + j).hang[nr]);
+    const hoehe = (tanne ? CONFIG.WALDKANTE_BAUM_HOEHE : CONFIG.WALDKANTE_FELS_HOEHE) * Math.min(1, wachstum / 0.3);
+    const abstand = tanne ? CONFIG.WALDKANTE_BAUM_ABSTAND : CONFIG.WALDKANTE_FELS_ABSTAND;
+    const Y = this.kanteY[nr], N = this.kanteN[nr], A = this.kanteA[nr], M = this.kanteM[nr];
+    this.ctx.fillStyle = tanne ? CONFIG.FARBEN.WALDKANTE_TANNE : CONFIG.FARBEN.WALDKANTE_FELS;
+    for (let x = e.kanteVon[nr]; x < e.kanteBis[nr]; x++) {
+      if (N[x] !== e.n) continue;
+      const y = Math.round(Y[x]);
+      if (y <= 0) continue; // Kante oben aus dem Bild
+      const pos = A[x] / abstand;
+      const i = Math.floor(pos);
+      const t = pos - i;
+      let h;
+      if (tanne) {
+        // Spitze Tanne: Dreieck, in der Mitte am höchsten
+        h = hoehe * (0.55 + 0.45 * this.kanteZufall(i)) * (1 - Math.abs(2 * t - 1));
+      } else {
+        // Felskante: unregelmässig auf und ab, gerade Stücke zwischen zufälligen Höhen
+        const h1 = this.kanteZufall(i), h2 = this.kanteZufall(i + 1);
+        h = hoehe * (0.15 + 0.85 * (h1 + (h2 - h1) * t));
+      }
+      const hp = Math.round(h * M[x]);
+      if (hp >= 1) this.ctx.fillRect(x, y - hp, 1, hp);
+    }
+  },
+
+  // Feste Zufallszahl (0 bis 1) für die Zacke Nummer i: gleiche Nummer, gleiche Zahl
+  kanteZufall(i) {
+    let t = Math.imul(i ^ 0x5bd1e995, 0x27d4eb2d);
+    t ^= t >>> 15;
+    t = Math.imul(t, 0x85ebca6b);
+    t ^= t >>> 13;
+    return (t >>> 0) / 4294967296;
   },
 
   // Risse und Grasflecken im Fels (nur in der Nähe). Beides sind kleine
@@ -869,9 +1170,10 @@ const Render = {
     }
   },
 
-  // Ist auf Stück i oder den nächsten paar Stücken irgendwo ein Hang?
+  // Ist auf Stück i, den nächsten paar Stücken oder den paar davor (deren Flanke
+  // zeichnet das fernste Stück ihres Streifens) irgendwo ein Hang?
   hangInDerNaehe(i) {
-    for (let j = i; j <= i + CONFIG.STREIFEN_LAENGE; j++) {
+    for (let j = i - CONFIG.STREIFEN_LAENGE; j <= i + CONFIG.STREIFEN_LAENGE; j++) {
       const s = Road.stueck(j);
       if (s.hang[0] > 0 || s.hang[1] > 0) return true;
     }
@@ -1351,7 +1653,8 @@ const Render = {
       // Gelände links und rechts, mit Prozent (beim Übergang unter 100)
       'GELÄNDE L ' + this.gelaendeText(stueck, 0) + '  R ' + this.gelaendeText(stueck, 1),
       // Wie weit der Hang gewachsen ist (0 % = flach am Bankett, 100 % = voller Querschnitt)
-      'HANG L ' + Math.round(stueck.hang[0] * 100) + ' %  R ' + Math.round(stueck.hang[1] * 100) + ' %',
+      // Dazu der Faktor hang_hoehe aus track.js (weich übergeblendet)
+      'HANG L ' + Math.round(stueck.hang[0] * 100) + ' %  R ' + Math.round(stueck.hang[1] * 100) + ' %  HÖHE ' + Math.round(stueck.hangFaktor * 100) + ' %',
     ];
     let breite = 0;
     for (const z of zeilen) breite = Math.max(breite, this.textBreite(z));
