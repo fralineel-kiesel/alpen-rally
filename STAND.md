@@ -1,6 +1,6 @@
 # Alpen Rally – Stand
 
-Letzte Aktualisierung: Meilenstein 3 abgeschlossen (Landschaft, Strassenrand-Objekte, Kollisionen) plus Bergab-Korrektur.
+Letzte Aktualisierung: Meilenstein 3.5 abgeschlossen (Leitplanke als Band, Temposchilder, Alpen-Gelände mit Felswand und Abhang, Schneeberge).
 
 ## Fertig
 ### Meilenstein 1: Gerade Strasse, Platzhalter-Auto, Steuerung
@@ -60,15 +60,36 @@ Letzte Aktualisierung: Meilenstein 3 abgeschlossen (Landschaft, Strassenrand-Obj
   - Erlaubtes Übertempo bergab `BERGAB_UEBERTEMPO` 0,08 → 0,03 (206 statt 216 km/h).
   - Neu `HANGABTRIEB_BERGAB` 7 (vorher galt bergab wie bergauf 9,81): Rollen und Schieben bergab etwas schwächer.
   - Nachgerechnet bei 10 % Gefälle (alt → neu): 0–150 km/h 6,9 → 8,4 s (flach: ca. 11 s), 100–195 km/h 7,0 → 8,8 s (flach 12,9 s), 5 s Rollen ab 150 km/h endet bei 107 → 102 km/h (flach 90).
-- **Sprites** (`js/sprites.js`): Alles als Textraster im Code, beim Start einmal in kleine Bilder umgewandelt. Erdige Palette ohne reines Schwarz. Fichte gross/klein (je 2 Varianten), Laubbaum (2), Busch (2), Fels (2 Formen), Leitplanke, Kurvenschild (Pfeil links, für rechts gespiegelt), Wegweiser (ohne Ortsnamen), Holzzaun, Kuh (2), dazu 3 Wolkenformen. Bäume, Büsche, Felsen, Kühe werden zufällig gespiegelt. Jeder Sprite hat Höhe in Metern, "fest" oder "weich" und eine Kollisionsbreite.
+- **Sprites** (`js/sprites.js`): Alles als Textraster im Code, beim Start einmal in kleine Bilder umgewandelt. Erdige Palette ohne reines Schwarz. Fichte gross/klein (je 2 Varianten), Laubbaum (2), Busch (2), Fels (2 Formen), Leitplanke, Kurvenschild (Pfeil links, für rechts gespiegelt; in 3.5 entfernt), Wegweiser (ohne Ortsnamen), Holzzaun, Kuh (2), dazu 3 Wolkenformen. Bäume, Büsche, Felsen, Kühe werden zufällig gespiegelt. Jeder Sprite hat Höhe in Metern, "fest" oder "weich" und eine Kollisionsbreite.
 - **Platzierung** (`js/scenery.js`): Jeder Abschnitt in `track.js` hat ein Feld `umgebung` (wald, wiese, fels, lichtung) und optional `dichte` (das "Gefälle gerade" hat 1,5 = dichter Wald). Die Umgebungen stehen als gut lesbare Liste von "Reihen" in `scenery.js` (Abstand zum Bankett, im Schnitt alle wie viele Meter, welche Sprites wie häufig). Fester Zufalls-Seed (`SZENERIE_SEED`): Bei jedem Start steht alles am selben Ort (geprüft). Nichts steht auf Strasse oder Bankett (geprüft, mindestens `SZENERIE_MIN_ABSTAND` 0,3 m Luft). Objekte überlappen sich nicht am selben Platz; was zuerst steht (Leitplanke, Zaun, Schild), hat Vorrang. Insgesamt ca. 2440 Objekte auf der Runde.
-- **Leitplanken** automatisch an der Aussenseite aller Kurven ab Stärke 4 (und ab Stärke 3 mit mind. 4 % Gefälle), 16 m vor bis 16 m nach der Kurve. Ein Stück alle 2 m, die Bilder überlappen, darum wirkt die Planke durchgehend. In "fels" zusätzlich links (Talseite).
-- **Kurvenschilder** 100 m vor allen 13 Kurven ab Stärke 3, an der Aussenseite, Pfeil in Kurvenrichtung. Steht dort eine Leitplanke, steht das Schild dahinter; steht dort ein Zaun, rückt es näher an die Strasse.
+- **Leitplanken** automatisch an der Aussenseite aller Kurven ab Stärke 4 (und ab Stärke 3 mit mind. 4 % Gefälle), 16 m vor bis 16 m nach der Kurve. (Seit 3.5 als durchgehendes Band gezeichnet, siehe unten.)
+- ~~Kurvenschilder~~ (in 3.5 durch Temposchilder ersetzt).
 - **Darstellung:** Objekte hängen an den Strassenstücken und werden mit derselben Perspektive gezeichnet (näher = grösser), ohne Glättung. Reihenfolge von weit nach nah. Hinter Kuppen wird jedes Objekt an der Bildzeile abgeschnitten, ab der nähere Strasse liegt (hohe Bäume hinter einer Kuppe zeigen also nur noch die Spitze, wie in echt). Objekte unter 2 Pixel Höhe werden weggelassen. Das Auto wird über die Objekte hinter ihm gezeichnet; Objekte, die näher an der Kamera sind als das Auto, kommen danach.
 - **Hintergrund:** Waldlinie aus kleinen Pixel-Tannen (zwei Reihen, gezackt) direkt über dem Horizont, wandert in Kurven schneller als die Berge (`WALDLINIE_PARALLAX` 110, Berge 40/70). 5 Pixel-Wolken treiben langsam nach rechts und wandern in Kurven leicht mit (`WOLKEN_DRIFT`, `WOLKEN_PARALLAX`, Positionen in `WOLKEN`).
 - **Kollisionen** (Werte in `config.js`): Fest (Baum, Fels, Leitplanke, Schild, Wegweiser, Zaun, Kuh): Tempo auf 25 %, 0,3 s Bildwackeln (2 Pixel), Auto wird auf die Strassenseite des Objekts versetzt, danach 1 s keine weitere Kollision. Das Getriebe schaltet von selbst passend herunter (meist in den 1. Gang). Weich (Busch): Tempo −15 %, jeder Busch nur einmal. Nachgerechnet (60 und 144 Hz gleich): mit 106 km/h in den Zaun → 26 km/h, Auto kommt frei und ist nach 4,4 s wieder auf der Strassenmitte.
 - **Leistung:** Pro Bild je nach Stelle ca. 20 (Kehren) bis 280 (Wald) Objekte, gezeichnet in ca. 1,1 ms (Budget bei 60 Hz: 16,7 ms). Mit künstlich 4-fach gebremstem Prozessor 99 % der Bilder unter 13 ms. Sicherheitsgrenze `MAX_OBJEKTE` 300 (die nächsten zuerst), wird auf der aktuellen Strecke nie erreicht (höchstens 284).
 - **Debug-Anzeige (F3):** zusätzlich "OBJEKTE" (gezeichnet in diesem Bild / Grenze).
+
+### Meilenstein 3.5: Leitplanke, Schilder, Alpen-Gelände
+- **Leitplanke als durchgehendes Band.** Ursache der Treppen geprüft: Jedes 4-m-Stück war ein eigenes, flaches Bild, das immer zur Kamera schaut. Es kann der Strasse nicht folgen: In Kurven liegt das nächste Stück seitlich und höher versetzt, als waagrechtes Rechteck daneben, und weil jedes auf ganze Pixel gerundet wird, springen die Kanten noch dazu. Das Runden allein war also nicht schuld, sondern das flache Bild.
+  - Neu wird die Planke wie die Strasse gezeichnet: pro Strassenstück (2 m) ein Viereck von seinem nahen bis zu seinem fernen Ende. Das nächste Stück beginnt genau an diesen Ecken, darum gibt es weder Spalt noch Versatz, und das Band folgt Kurven und Hügeln. Silbergrauer Balken in zwei Grautönen (oben hell, unten dunkler) mit heller Lichtlinie oben, weit hinten mindestens 1 Pixel hoch. Darunter alle 4 m ein dunkler Pfosten (kleines Bild, gleicher Ankerpunkt wie das Band). Hinter Kuppen wird das Band wie alles andere abgeschnitten.
+  - Wo sie steht: wie bisher an der Aussenseite enger Kurven, neu zusätzlich überall auf der Talseite. Die Leitplanke links in der Umgebung "fels" ist weggefallen: Welche Seite die Talseite ist, sagt jetzt das Gelände (in der "Haarnadel links" wäre sie sonst vor der Felswand gestanden).
+  - Kollision wie bisher (fest, ein Eintrag alle 2 m). Höhen und Farben in `config.js` (`PLANKE_...`, `PFOSTEN_...`).
+- **Temposchilder statt Kurvenschilder.** Die gelben Pfeilschilder sind ganz weg. Neu: runde weisse Scheibe mit rotem Rand, schwarze Zahl, auf einem Pfosten, 120 m vor jeder Kurve ab Stärke 3, immer rechts. 3 = 80, 4 = 60, 5 = 50, 6 = 40 (einstellbar in `TEMPOSCHILD_ZAHLEN`, für jede Zahl wird das Bild beim Start selbst erzeugt). Die Ziffern kommen aus einer eigenen 3x5-Pixelschrift in `sprites.js`. 13 Schilder auf der Runde (4x 80, 4x 60, 2x 50, 3x 40). Fest wie die anderen Schilder; steht dort eine Leitplanke, steht das Schild dahinter. Kein Einfluss aufs Fahren. Die Scheibe ist mit 1,3 m bewusst grösser als in echt, damit man die Zahl lesen kann.
+  - Wegweiser bleiben wie bisher.
+- **Alpen-Gelände.** Neues Feld `gelaende` in `track.js` (Werte: `keins`, `wand_links_tal_rechts`, `wand_rechts_tal_links`, `tal_links`, `tal_rechts`), wie vorgegeben für alle 26 Abschnitte eingetragen. Unbekannte Werte (Tippfehler) werden zu `keins`, mit Warnung in der Konsole. Die andere Seite folgt weiter der Umgebung.
+  - **Felswand:** pro Strassenstück ein Viereck (gemeinsame Kanten), senkrecht, 28 m hoch (`WAND_HOEHE`, 3,5-mal die Strassenbreite). Oberkante ausgefranst (grobe Wellen plus feines Zittern, bei jedem Start gleich). 4 Gesteinsschichten in Grau und Braun mit leicht gewellten Grenzen, helle Linie an der Oberkante, ein paar dunkle Risse und Grasbüschel. Davor 3 m Geröllstreifen (`WAND_ABSTAND`) mit ab und zu einem Fels oder Busch, keine Bäume. Aufprall an der Wand wie an einem Fels (Tempo auf 25 %, Wackeln, Auto wird Richtung Strassenmitte versetzt).
+  - **Abhang:** hinter 2,2 m Grasstreifen (`TAL_RANDSTREIFEN`, dort steht die Leitplanke) eine erdige Abbruchkante. Dahinter fällt ein Hang ab (dunkelgrün mit Streifen) zum Talboden 35 m unter der Strasse (`TAL_TIEFE`). Hang und Talboden sind wie die Strasse Vierecke pro Stück. Der Talboden ist ein blaugrüner Flickenteppich aus Wiesen und Waldstücken mit kleinen bläulichen Bäumen, in der Ferne in 4 Stufen heller (Dunst). Ganz hinten eine Dunst-Landschaft unter dem Horizont: 5 Streifen von bläulich-grau (weit) bis blaugrün (näher) mit sanften Hügelketten und kleinen Baumwipfeln. Sie wandert in Kurven seitlich mit. Auf der Talseite stehen bis 15 m ab Strassenmitte keine hohen Bäume (`TAL_BAUMFREI`).
+  - **Übergänge:** Die Wand wächst an der Abschnittsgrenze über 40 m aus dem Boden und sinkt am Ende wieder (`GELAENDE_UEBERGANG`). Der Abhang öffnet sich genauso: Die Kante kommt von weit draussen heran, gleichzeitig wird das Tal tiefer. Folgen zwei Abschnitte mit gleichem Gelände auf derselben Seite, läuft es ohne Übergang weiter. Kurze Abschnitte (unter 80 m) erreichen die volle Höhe nur in der Mitte.
+  - Hinter Kuppen wird alles verdeckt wie die Strasse (auf Bildschirmfotos an Kuppe, Senke, Gefälle und den Kehren geprüft, nichts scheint durch; keine Prüfung Bild für Bild über die ganze Runde).
+  - Liegt die Strasse weiter vorne tiefer als der nähere Talboden (Gefälle hinunter in die Senke), bleibt der Talboden davor sichtbar, statt von der fernen Wiese übermalt zu werden.
+- **Bergkulisse:** hintere Berge höher und schroffer (bis 68 Pixel), die 7 höchsten Gipfel mit Schneekappen aus weissen und hellblauen Pixeln, auf der Schattenseite mehr Hellblau, Schneegrenze unregelmässig (`SCHNEE_AB`, `SCHNEE_MENGE`). Neu ganz hinten eine dritte, helle Dunst-Bergebene, die sich am langsamsten verschiebt (`BERG_PARALLAX_FERN` 20). Alle drei Ebenen werden beim Start einmal vorgezeichnet und dann nur noch hinkopiert.
+- **Debug-Anzeige (F3):** zusätzlich "GELÄNDE" links und rechts, z. B. "L WAND 100%  R TAL 45%" (unter 100 % = im Übergang).
+- **Leistung** (gemessen in Chromium ohne Grafikkarte, also eher langsamer als im echten Browser, je ein Bild alle 2,5 m über die ganze Runde):
+  - Normal: Median 3,3 ms pro Bild, 99 % unter 6,9 ms (vorher 1,5 / 3,2 ms). Budget bei 60 Hz: 16,7 ms.
+  - Mit künstlich 4-fach gebremstem Prozessor: Median 11,9 ms, 99 % unter 29 ms (vorher mit derselben Messung 8,0 / 22 ms). Die Zahlen sind höher als die 13 ms im Stand von Meilenstein 3, weil diese Messung jedes Bild wirklich fertig zeichnen lässt.
+  - Massnahmen, damit es flüssig bleibt: Hang ein Viereck pro Farbstreifen (8 m) statt pro Stück (2 m), Farbe nur einmal pro Viereck setzen, Talboden nur bis 300 m (`TAL_BODEN_SICHT`), Felder nur bis 140 m (`TAL_FELDER_BIS`), Wand ab 220 m einfarbig ohne Schichten und Risse (`WAND_DETAIL_BIS`), Berge vorgezeichnet statt Spalte für Spalte. Damit ging die Zahl der Zeichenbefehle an der teuersten Stelle von ca. 5800 auf 3300 pro Bild zurück.
+- Nachgeprüft (mit dem echten Spielcode): Aufprall an Felswand, Leitplanke und Temposchild funktioniert (Tempo auf 25 %, Wackeln, zurückversetzt). Kein Objekt steht auf Strasse oder Bankett, keins halb in der Wand, kein hoher Baum nahe der Talseite. Insgesamt ca. 1240 sichtbare Objekte (vorher 2440; weniger, weil vor Felswänden und an Abhängen keine Bäume mehr stehen).
 
 ## Steuerung
 | Taste | Wirkung |
@@ -79,15 +100,16 @@ Letzte Aktualisierung: Meilenstein 3 abgeschlossen (Landschaft, Strassenrand-Obj
 | F3 | Debug-Anzeige ein/aus |
 
 ## Offen (nächste Meilensteine, siehe KONZEPT.md)
-- Meilenstein 4: Untergründe (Asphalt/Schotter/Schlamm), Zeit, Checkpoints, Beifahrer.
-- Danach: Berg-Hintergrund, Menü, Auto-Sprites, Sound usw.
+- Meilenstein 4: Untergründe (Schotter, Wiese), Abzweigung mit Rally-Absperrung.
+- Meilenstein 5: Zeit, Checkpoints, Beifahrer.
+- Danach: Tageszeiten, Menü, Auto-Sprites, Sound usw.
 - Offene Ideen (siehe KONZEPT.md): Staubwolken hinten am Auto, Seitenansicht des Autos beim Lenken.
 
 ## Bekannte Macken
 - Ganz hinten am Horizont flimmern die Streifen etwas (sie sind dort kleiner als ein Pixel). Bei Retro-Spielen normal.
 - Wie bei allen Pseudo-3D-Spielen sind Kurven nur "aufgemalt": Eine Kehre dreht sich nicht wirklich um 180 Grad, die Strasse biegt sich nur stark zur Seite. Das Auto steht immer gerade.
 - Schaut man ein Gefälle hinunter, ist zwischen Horizont und Strasse viel Wiese. Mit Bäumen und Waldlinie ist das jetzt deutlich besser, in "wiese"-Abschnitten bleibt es aber gewollt offen.
-- Die Berg-Silhouette wiederholt sich alle 320 Pixel. An der Nahtstelle passen die Höhen nicht ganz (1–2 Pixel Sprung), fällt kaum auf.
+- Die Berg-Silhouetten wiederholen sich alle 320 Pixel (die Naht selbst passt seit 3.5 genau).
 - Rutschen je nach Untergrund gibt es noch nicht (kommt mit Meilenstein 4).
 - Der Luftwiderstand wirkt jetzt immer, also auch beim Ausrollen und Bremsen. Bei hohem Tempo rollt das Auto darum etwas schneller aus als vorher.
 - Auf dem Tacho stehen die Zahlen 120 und 160 sehr knapp nebeneinander (das Zifferblatt ist nur 57 Pixel gross). Lesbar, aber eng.
@@ -99,11 +121,18 @@ Letzte Aktualisierung: Meilenstein 3 abgeschlossen (Landschaft, Strassenrand-Obj
 - In Kurven, die sich weit hinten fast waagrecht durchs Bild ziehen, sieht man ganz am Horizont eine lange, 1 Pixel dünne graue Linie. Das ist die echte Strasse, die zur Seite wegläuft.
 - Die Automatik schaltet nur nach Drehzahl. Bergauf bleibt sie darum manchmal zu lange in einem hohen Gang, bevor sie herunterschaltet.
 - Sehr knapp unter dem Horizont kann man die Strasse hinter einem Hügel verschwinden und daneben wieder auftauchen sehen, mit 1 Pixel Wiese dazwischen (das ist richtig so).
-- Alle Objekte sind flache Bilder, die immer zur Kamera schauen (typisch Pseudo-3D). Leitplanken und Zäune sind darum aus vielen Stücken zusammengesetzt und sehen besonders in Kehren wie Treppenstufen aus.
+- Alle Objekte sind flache Bilder, die immer zur Kamera schauen (typisch Pseudo-3D). Die Leitplanke ist seit 3.5 ein Band und läuft glatt durch. Die Holzzäune sind aber noch aus vielen Bildern zusammengesetzt und können in Kurven wie Treppenstufen aussehen (gleiche Ursache wie früher bei der Leitplanke, liesse sich genauso lösen).
 - Objekte stehen nur an Stückgrenzen (alle 2 m). Fällt im Spiel nicht auf.
 - Hält man nach einem Aufprall weiter auf die Leitplanke zu, kracht es jede Sekunde erneut (jedes Mal Tempo auf 25 %). Man muss also aktiv zurück auf die Strasse lenken.
 - Nach einem Aufprall im Wald wird das Auto nur bis knapp vor das getroffene Objekt versetzt, nicht ganz auf die Strasse. Steht dort gleich der nächste Baum, kracht es nach 1 s wieder.
 - Bei Bäumen zählt beim Aufprall nur Stamm und untere Äste (ca. 1 m breit), nicht die ganze Krone. Fährt man knapp an einem Baum vorbei, kann das Auto optisch kurz "in" der Krone sein.
 - Die grüne "Wand" vor dem steilen Rückweg zum Start (nach der Kehre rechts) gibt es weiterhin; jetzt stehen immerhin Bäume drauf.
 - Die Waldlinie und die Berge wiederholen sich alle 320 Pixel.
-- Ganz selten kurze Ruckler sind möglich, wenn der Browser im Hintergrund aufräumt (pro Bild werden ein paar hundert kleine Listen-Einträge neu angelegt). Bisher nur in der künstlich gebremsten Messung gesehen.
+- Ganz selten kurze Ruckler sind möglich, wenn der Browser im Hintergrund aufräumt (pro Bild werden ein paar hundert kleine Listen-Einträge neu angelegt). Bisher nur in der Messung ohne Grafikkarte gesehen (einzelne Bilder mit 20–80 ms, bei der alten Version genauso).
+- Felswand und Abhang sind nur "aufgemalt" wie die Kurven: Die Wand ist senkrecht und hat keinen Schatten, der Talboden ist eine flache Ebene 35 m unter der Strasse, die mit der Strasse mitsteigt und mitfällt.
+- Fährt man das "Gefälle gerade" hinunter, sieht man weit vorne die Wiese der Senke in kräftigem Grün, darunter den dunstigen Talboden. Das ist richtig gerechnet (die Strasse führt dort ins Tal hinunter), sieht aber etwas hart aus, weil weit entfernte Wiese nicht im Dunst liegt.
+- In Kurven sieht man den Beginn einer Felswand von weitem manchmal als schmale, spitze Felsnadel (die Wand wächst auf 40 m, das ist in der Kurve im Bild nur ein paar Pixel breit).
+- Die Seiten wechseln auf der Strecke oft (z. B. "Rechts 4" / "Links 4": Wand und Tal tauschen alle 70–80 m die Seite). Mit 40 m Übergang erreichen diese kurzen Abschnitte die volle Wandhöhe nur in der Mitte, dazwischen sinkt und wächst die Wand ständig.
+- Im Übergang zum Abhang steht die Leitplanke schon, während die Kante noch weit draussen ist (dazwischen Gras). Gewollt, damit die Planke nicht mitten im Abhang beginnt.
+- Wolken können jetzt hinter den höheren Bergen teilweise verschwinden.
+- Fährt man nach einem Aufprall an der Felswand weiter gegen sie, kracht es wie an der Leitplanke jede Sekunde erneut.
