@@ -1,4 +1,4 @@
-// Zeichnen: Himmel, Berge, Strasse, Auto und Tempoanzeige.
+// Zeichnen: Himmel, Berge, Strasse, Auto und Anzeigen (Drehzahl, Tempo).
 // Wir zeichnen fast alles mit fillRect auf ganze Pixel. Schräge Linien
 // würde der Browser sonst weichzeichnen, und das passt nicht zum Pixel-Look.
 
@@ -13,11 +13,12 @@ const BERGE_VORNE = [
   [210, 9], [245, 22], [275, 12], [300, 18], [320, 10],
 ];
 
-// Mini-Pixelschrift (3 Pixel breit, 5 hoch). "1" = Pixel an, "0" = aus.
+// Mini-Pixelschrift (meist 3 Pixel breit, 5 hoch). "1" = Pixel an, "0" = aus.
+// Die Eins ist schmaler, damit Zahlen wie "120" auf dem kleinen Tacho Platz haben.
 // Eigene Schrift, weil normaler Canvas-Text bei 320x180 verschwommen aussieht.
 const PIXEL_SCHRIFT = {
   '0': ['111', '101', '101', '101', '111'],
-  '1': ['010', '110', '010', '010', '111'],
+  '1': ['01', '11', '01', '01', '01'],
   '2': ['111', '001', '111', '100', '111'],
   '3': ['111', '001', '111', '001', '111'],
   '4': ['101', '101', '111', '001', '001'],
@@ -29,15 +30,35 @@ const PIXEL_SCHRIFT = {
   'K': ['101', '101', '110', '101', '101'],
   'M': ['101', '111', '111', '101', '101'],
   'H': ['101', '101', '111', '101', '101'],
+  'N': ['1001', '1101', '1011', '1001', '1001'],
   '/': ['001', '001', '010', '100', '100'],
   ' ': ['000', '000', '000', '000', '000'],
 };
 
 const Render = {
   ctx: null,
+  // Wohin die Nadeln gerade zeigen. Sie laufen dem echten Wert etwas
+  // hinterher, damit sie ruhig wirken und nicht bei jedem Bild zittern.
+  nadelDrehzahl: 0,
+  nadelTempo: 0,
+  // Fertig vorgezeichnete Zifferblätter (ohne Nadel), siehe zifferblattVorzeichnen
+  blattDrehzahl: null,
+  blattTempo: null,
 
   start(ctx) {
     this.ctx = ctx;
+    this.nadelDrehzahl = Car.drehzahl;
+    this.blattDrehzahl = this.zifferblattVorzeichnen(
+      CONFIG.DREHZAHL_SKALA_MAX / 1000, 1, 1, 0.5, CONFIG.DREHZAHL_ROT_AB / 1000);
+    this.blattTempo = this.zifferblattVorzeichnen(CONFIG.TEMPO_SKALA_MAX, 40, 40, 20, null);
+  },
+
+  // Nadeln nachführen. "Glätten" heisst: Pro Zeitschritt ein Stück des
+  // restlichen Weges gehen. Mit Math.exp ist das auf 60 Hz und 144 Hz gleich schnell.
+  update(dt) {
+    const anteil = 1 - Math.exp(-dt / CONFIG.NADEL_TRAEGHEIT);
+    this.nadelDrehzahl += (Car.drehzahl - this.nadelDrehzahl) * anteil;
+    this.nadelTempo += (Car.tempo * 3.6 - this.nadelTempo) * anteil;
   },
 
   zeichneAlles() {
@@ -46,7 +67,7 @@ const Render = {
     this.berge(BERGE_VORNE, CONFIG.FARBEN.BERG_VORNE);
     this.strasse();
     this.auto();
-    this.tempoanzeige();
+    this.anzeigen();
   },
 
   // Himmel in einigen Farbstufen von oben nach unten (Retro-Verlauf)
@@ -122,7 +143,7 @@ const Render = {
   stueckZeichnen(stueck, nah, fern, oben, unten) {
     const f = CONFIG.FARBEN;
     const strasse = CONFIG.STRASSE_HALBE_BREITE;
-    const rand = strasse + CONFIG.RANDSTREIFEN_BREITE;
+    const bankett = strasse + CONFIG.BANKETT_BREITE;
     const linie = CONFIG.MITTELLINIE_BREITE / 2;
 
     for (let y = oben; y < unten; y++) {
@@ -131,7 +152,9 @@ const Render = {
       const m = fern.massstab + (nah.massstab - fern.massstab) * t;
 
       this.zeile(0, CONFIG.BREITE, y, stueck.hell ? f.GRAS_HELL : f.GRAS_DUNKEL);
-      this.zeile(mitte - rand * m, mitte + rand * m, y, stueck.hell ? f.RAND_WEISS : f.RAND_ROT);
+      // Bankett zuerst über die ganze Breite, dann den Asphalt darüber.
+      // Übrig bleibt links und rechts ein schmaler Erdstreifen.
+      this.zeile(mitte - bankett * m, mitte + bankett * m, y, stueck.hell ? f.BANKETT_HELL : f.BANKETT_DUNKEL);
       this.zeile(mitte - strasse * m, mitte + strasse * m, y, stueck.hell ? f.ASPHALT_HELL : f.ASPHALT_DUNKEL);
       if (stueck.hell) {
         this.zeile(mitte - linie * m, mitte + linie * m, y, f.MITTELLINIE, true);
@@ -181,37 +204,165 @@ const Render = {
     rechteck(f.AUTO_RUECKLICHT, w - 2 - w * 0.17, koerperY + 3, w * 0.17, 3); // Rücklicht rechts
   },
 
-  // Tempo als Zahl unten rechts: grosse Ziffern, daneben klein "KM/H"
-  tempoanzeige() {
-    const zahl = String(Car.kmh());
-    const gross = 2; // Ziffern doppelt so gross zeichnen
-    // Platz immer für 3 Ziffern, damit die Box beim Beschleunigen nicht hüpft
-    const zahlBreite = 3 * 4 * gross - gross;
-    const einheitBreite = 'KM/H'.length * 4 - 1;
-    const rand = 4;
-    const gesamt = zahlBreite + 3 + einheitBreite;
-    const x = CONFIG.BREITE - rand - gesamt;
-    const y = CONFIG.HOEHE - rand - 5 * gross;
+  // --- Analoge Anzeigen ---
+  // Links Drehzahlmesser mit Gang, rechts Tempomesser mit kleiner Digitalzahl.
+  anzeigen() {
+    const r = CONFIG.ANZEIGE_RADIUS;
+    const y = CONFIG.ANZEIGE_Y;
+    const f = CONFIG.FARBEN;
 
-    this.ctx.fillStyle = CONFIG.FARBEN.ANZEIGE_HINTERGRUND;
-    this.ctx.fillRect(x - 3, y - 3, gesamt + 6, 5 * gross + 6);
-    // Zahl rechtsbündig: bei weniger Ziffern weiter rechts anfangen
-    this.text(zahl, x + (3 - zahl.length) * 4 * gross, y, gross);
-    this.text('KM/H', x + zahlBreite + 3, y + 5 * gross - 5, 1);
+    // Drehzahl (Skala in 1000 U/min)
+    let x = CONFIG.DREHZAHL_ANZEIGE_X;
+    this.ctx.drawImage(this.blattDrehzahl, x - r, y - r);
+    // Gang unten in der Mitte: Dort kommt die Nadel nie hin (Lücke der Skala)
+    const gang = Car.gangText();
+    this.text(gang, x - Math.floor(this.textBreite(gang) * 2 / 2), y + 6, 2, f.ANZEIGE_SKALA);
+    this.nadel(x, y, this.nadelDrehzahl / CONFIG.DREHZAHL_SKALA_MAX);
+
+    // Tempo
+    x = CONFIG.TEMPO_ANZEIGE_X;
+    this.ctx.drawImage(this.blattTempo, x - r, y - r);
+    const zahl = String(Car.kmh());
+    // Rechtsbündig in einem festen Feld (11 Pixel = 3 Ziffern), damit nichts
+    // hüpft. Tiefer als die Skalenzahlen, damit man sie nicht verwechselt.
+    this.text(zahl, x + 6 - this.textBreite(zahl), y + 11, 1, f.ANZEIGE_SKALA);
+    this.text('KM/H', x - 7, y + 18, 1, f.ANZEIGE_RAHMEN);
+    this.nadel(x, y, this.nadelTempo / CONFIG.TEMPO_SKALA_MAX);
   },
 
-  text(text, x, y, gross) {
-    this.ctx.fillStyle = CONFIG.FARBEN.ANZEIGE_TEXT;
-    for (let i = 0; i < text.length; i++) {
-      const zeichen = PIXEL_SCHRIFT[text[i]];
+  // Winkel (Bogenmass) für einen Anteil der Skala von 0 bis 1.
+  // Die Skala ist unten offen: Sie beginnt links unten und läuft im
+  // Uhrzeigersinn über oben nach rechts unten. 90 Grad zeigt im Bild nach unten.
+  skalaWinkel(anteil) {
+    const start = 90 + (360 - CONFIG.ANZEIGE_WINKEL) / 2;
+    return (start + anteil * CONFIG.ANZEIGE_WINKEL) * Math.PI / 180;
+  },
+
+  // Rote Nadel vom Mittelpunkt nach aussen, plus kleine Nabe in der Mitte
+  nadel(cx, cy, anteil) {
+    const f = CONFIG.FARBEN;
+    const w = this.skalaWinkel(Math.min(Math.max(anteil, 0), 1));
+    const laenge = CONFIG.ANZEIGE_RADIUS - 5;
+    this.pixelLinie(this.ctx, cx, cy,
+      cx + Math.cos(w) * laenge, cy + Math.sin(w) * laenge, f.ANZEIGE_NADEL);
+    this.ctx.fillStyle = f.ANZEIGE_NABE;
+    this.ctx.fillRect(cx - 1, cy - 1, 3, 3);
+    this.ctx.fillStyle = f.ANZEIGE_NADEL;
+    this.ctx.fillRect(cx, cy, 1, 1);
+  },
+
+  // Ein Zifferblatt einmal auf eine unsichtbare Leinwand zeichnen.
+  // Warum? Hintergrund, Ring, Striche und Zahlen ändern sich nie. So muss
+  // man sie nicht in jedem Bild neu ausrechnen, sondern nur hinkopieren.
+  //   max:         höchster Wert der Skala
+  //   zahlAlle:    alle wie viel eine Zahl hingeschrieben wird
+  //   strichAlle:  alle wie viel ein langer Strich kommt
+  //   kleinAlle:   alle wie viel ein kurzer Zwischenstrich kommt (0 = keine)
+  //   rotAb:       ab diesem Wert ist die Skala rot (null = nirgends)
+  zifferblattVorzeichnen(max, zahlAlle, strichAlle, kleinAlle, rotAb) {
+    const f = CONFIG.FARBEN;
+    const r = CONFIG.ANZEIGE_RADIUS;
+    const blatt = document.createElement('canvas');
+    blatt.width = 2 * r + 1;
+    blatt.height = 2 * r + 1;
+    const c = blatt.getContext('2d');
+    const startGrad = 90 + (360 - CONFIG.ANZEIGE_WINKEL) / 2;
+
+    // Pixel für Pixel: Abstand zur Mitte entscheidet, ob Hintergrund,
+    // Ring oder roter Bogen. So wird der Kreis sauber pixelig statt verschmiert.
+    for (let py = 0; py <= 2 * r; py++) {
+      for (let px = 0; px <= 2 * r; px++) {
+        const dx = px - r;
+        const dy = py - r;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > r + 0.3) continue; // ausserhalb des Kreises
+        let farbe = f.ANZEIGE_HINTERGRUND;
+        if (d > r - 1.5) {
+          farbe = f.ANZEIGE_RAHMEN;
+        } else if (rotAb !== null && d > r - 4 && d <= r - 2) {
+          // Wo auf der Skala liegt dieses Pixel? (0 = Skalenanfang, 1 = Ende)
+          const grad = Math.atan2(dy, dx) * 180 / Math.PI;
+          const anteil = ((grad - startGrad + 720) % 360) / CONFIG.ANZEIGE_WINKEL;
+          if (anteil >= rotAb / max && anteil <= 1) farbe = f.ANZEIGE_ROT;
+        }
+        c.fillStyle = farbe;
+        c.fillRect(px, py, 1, 1);
+      }
+    }
+
+    // Striche. Kleine Rechenfehler (z. B. 0.1 + 0.2) mit Math.round abfangen.
+    const schritt = kleinAlle || strichAlle;
+    for (let i = 0; i * schritt <= max + 1e-6; i++) {
+      const wert = i * schritt;
+      const lang = Math.abs(Math.round(wert / strichAlle) * strichAlle - wert) < 1e-6;
+      const w = this.skalaWinkel(wert / max);
+      const innen = lang ? r - 6 : r - 4;
+      const farbe = rotAb !== null && wert >= rotAb ? f.ANZEIGE_ROT : f.ANZEIGE_SKALA;
+      this.pixelLinie(c, r + Math.cos(w) * (r - 2), r + Math.sin(w) * (r - 2),
+        r + Math.cos(w) * innen, r + Math.sin(w) * innen, farbe);
+    }
+
+    // Zahlen, etwas weiter innen als die Striche
+    const zahlRadius = r - 11;
+    for (let wert = 0; wert <= max; wert += zahlAlle) {
+      const w = this.skalaWinkel(wert / max);
+      const t = String(wert);
+      const breite = this.textBreite(t);
+      const tx = Math.round(r + Math.cos(w) * zahlRadius - breite / 2);
+      const ty = Math.round(r + Math.sin(w) * zahlRadius - 2.5);
+      const farbe = rotAb !== null && wert >= rotAb ? f.ANZEIGE_ROT : f.ANZEIGE_SKALA;
+      this.text(t, tx, ty, 1, farbe, c);
+    }
+    return blatt;
+  },
+
+  // Gerade Linie aus einzelnen Pixeln (Bresenham-Verfahren).
+  // Der Browser würde schräge Linien weichzeichnen; so bleiben sie scharf.
+  pixelLinie(c, x1, y1, x2, y2, farbe) {
+    let x = Math.round(x1);
+    let y = Math.round(y1);
+    const zx = Math.round(x2);
+    const zy = Math.round(y2);
+    const dx = Math.abs(zx - x);
+    const dy = -Math.abs(zy - y);
+    const sx = x < zx ? 1 : -1;
+    const sy = y < zy ? 1 : -1;
+    let fehler = dx + dy;
+    c.fillStyle = farbe;
+    for (;;) {
+      c.fillRect(x, y, 1, 1);
+      if (x === zx && y === zy) break;
+      const f2 = 2 * fehler;
+      if (f2 >= dy) { fehler += dy; x += sx; }
+      if (f2 <= dx) { fehler += dx; y += sy; }
+    }
+  },
+
+  // Text in der Pixelschrift. "c" ist die Leinwand, auf die gezeichnet
+  // wird (ohne Angabe: das Spielbild).
+  text(text, x, y, gross, farbe, c = this.ctx) {
+    c.fillStyle = farbe;
+    let links = 0; // wie weit (in Schrift-Pixeln) das nächste Zeichen nach rechts rückt
+    for (const z of text) {
+      const zeichen = PIXEL_SCHRIFT[z];
       if (!zeichen) continue;
       for (let zy = 0; zy < 5; zy++) {
-        for (let zx = 0; zx < 3; zx++) {
+        for (let zx = 0; zx < zeichen[zy].length; zx++) {
           if (zeichen[zy][zx] === '1') {
-            this.ctx.fillRect(x + (i * 4 + zx) * gross, y + zy * gross, gross, gross);
+            c.fillRect(x + (links + zx) * gross, y + zy * gross, gross, gross);
           }
         }
       }
+      links += zeichen[0].length + 1; // Zeichenbreite plus 1 Pixel Abstand
     }
+  },
+
+  // Breite eines Textes in Pixeln (bei normaler Grösse), z. B. zum Zentrieren
+  textBreite(text) {
+    let breite = 0;
+    for (const z of text) {
+      if (PIXEL_SCHRIFT[z]) breite += PIXEL_SCHRIFT[z][0].length + 1;
+    }
+    return Math.max(breite - 1, 0);
   },
 };
