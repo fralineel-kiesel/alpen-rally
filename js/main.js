@@ -1,6 +1,7 @@
 // Spielschleife: verbindet alles.
-// Pro Bild: 1) ausrechnen, wie viel Zeit vergangen ist, 2) Auto bewegen,
-// 3) alles neu zeichnen. Dann wartet der Browser auf das nächste Bild.
+// Pro Bild: 1) ausrechnen, wie viel Zeit vergangen ist, 2) Auto und
+// Anzeige-Nadeln bewegen, 3) alles neu zeichnen. Dann wartet der Browser
+// auf das nächste Bild.
 
 const canvas = document.getElementById('spiel');
 const ctx = canvas.getContext('2d');
@@ -23,6 +24,7 @@ function schleife(zeit) {
   dt = Math.min(dt, CONFIG.MAX_DELTA);
 
   Car.update(dt);
+  Render.update(dt);
   Render.zeichneAlles();
 
   requestAnimationFrame(schleife);
