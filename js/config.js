@@ -21,6 +21,7 @@ const CONFIG = {
   STRASSE_HALBE_BREITE: 4,  // halbe Strassenbreite in Metern (4 = 8 m breite Strasse)
   BANKETT_BREITE: 0.8,      // Breite des Schotter-/Erdbanketts links und rechts neben dem Asphalt in Metern
   MITTELLINIE_BREITE: 0.15, // Breite der gestrichelten Mittellinie in Metern
+  MITTELLINIE_AB_PIXEL: 10, // Mittellinie erst zeichnen, wo die Strasse im Bild mindestens so viele Pixel breit ist (sonst weisse Punkte am Horizont)
   STUECK_LAENGE: 2,         // Länge eines Strassenstücks in Metern
   STREIFEN_LAENGE: 4,       // wie viele Strassenstücke eine Farbe behalten, bevor sie wechselt (Tempo-Streifen)
 

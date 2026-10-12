@@ -236,10 +236,30 @@ const Render = {
 
       const oben = Math.max(Math.round(fern.y), 0);
       const unten = Math.min(Math.round(nah.y), maxY);
-      if (unten <= oben) continue; // kleiner als ein Pixel, verdeckt oder Rückseite einer Kuppe
-
-      this.stueckZeichnen(stueck, nah, fern, oben, unten);
-      maxY = oben;
+      if (unten > oben) {
+        this.stueckZeichnen(stueck, nah, fern, oben, unten);
+        // Ragt das nahe Ende noch ein Stück in die schon gezeichnete Zeile
+        // darunter, auch diesen Rest nachtragen. Sonst bleibt dort, wo die
+        // Strasse fast waagrecht läuft, eine Lücke von ein, zwei Pixeln.
+        if (unten === maxY && maxY < CONFIG.HOEHE && nah.y > unten) {
+          const x1 = this.mitteBei(nah, fern, unten);
+          const x2 = this.mitteBei(nah, fern, Math.min(nah.y, unten + 1));
+          this.asphaltNachtragen(stueck, Math.min(x1, x2), Math.max(x1, x2), nah.massstab, unten);
+        }
+        maxY = oben;
+      } else if (oben === maxY && maxY < CONFIG.HOEHE) {
+        // Weit hinten ist ein Stück oft weniger als ein Pixel hoch. Früher
+        // fiel es dann einfach weg. In einer Kurve läuft die ferne Strasse
+        // aber fast waagrecht durchs Bild: Viele solche Stücke liegen auf
+        // derselben Bildzeile nebeneinander. Ohne sie blieben nur einzelne,
+        // abgerissene Striche übrig ("schwebende" graue Striche am Horizont).
+        // Darum tragen wir sie in die oberste schon gezeichnete Zeile nach.
+        // Liegt das nahe Ende tiefer als diese Zeile, ist es hinter einer
+        // Kuppe verdeckt. Dann zählt nur das ferne Ende.
+        const vonX = Math.round(nah.y) === maxY ? nah.x : fern.x;
+        this.asphaltNachtragen(stueck, Math.min(vonX, fern.x), Math.max(vonX, fern.x), fern.massstab, maxY);
+      }
+      // Sonst: liegt hinter einer Kuppe und ist verdeckt.
     }
   },
 
@@ -252,20 +272,50 @@ const Render = {
     const linie = CONFIG.MITTELLINIE_BREITE / 2;
 
     for (let y = oben; y < unten; y++) {
-      // 0 = fern, 1 = nah. Begrenzt, weil bei ganz flachen Stücken sonst Unsinn herauskommt
-      const t = Math.min(Math.max((y + 0.5 - fern.y) / (nah.y - fern.y), 0), 1);
-      const mitte = fern.x + (nah.x - fern.x) * t;
-      const m = fern.massstab + (nah.massstab - fern.massstab) * t;
+      const m = fern.massstab + (nah.massstab - fern.massstab) * this.anteilBei(nah, fern, y + 0.5);
+      // Wo liegt die Strassenmitte am oberen und am unteren Rand dieser
+      // Bildzeile? In engen Kurven können das mehrere Pixel Unterschied sein.
+      // Wir zeichnen die Zeile über die ganze Spanne, sonst entstehen Lücken
+      // und Treppen zwischen den Zeilen.
+      const m1 = this.mitteBei(nah, fern, y);
+      const m2 = this.mitteBei(nah, fern, y + 1);
+      const links = Math.min(m1, m2);
+      const rechts = Math.max(m1, m2);
 
       this.zeile(0, CONFIG.BREITE, y, stueck.hell ? f.GRAS_HELL : f.GRAS_DUNKEL);
       // Bankett zuerst über die ganze Breite, dann den Asphalt darüber.
       // Übrig bleibt links und rechts ein schmaler Erdstreifen.
-      this.zeile(mitte - bankett * m, mitte + bankett * m, y, stueck.hell ? f.BANKETT_HELL : f.BANKETT_DUNKEL);
-      this.zeile(mitte - strasse * m, mitte + strasse * m, y, stueck.hell ? f.ASPHALT_HELL : f.ASPHALT_DUNKEL);
-      if (stueck.hell) {
-        this.zeile(mitte - linie * m, mitte + linie * m, y, f.MITTELLINIE, true);
+      this.zeile(links - bankett * m, rechts + bankett * m, y, stueck.hell ? f.BANKETT_HELL : f.BANKETT_DUNKEL);
+      this.zeile(links - strasse * m, rechts + strasse * m, y, stueck.hell ? f.ASPHALT_HELL : f.ASPHALT_DUNKEL);
+      // Mittellinie nur, wo die Strasse breit genug ist. Ganz hinten wäre
+      // sie nur noch ein einzelner weisser Punkt, der in der Luft zu hängen scheint.
+      if (stueck.hell && 2 * strasse * m >= CONFIG.MITTELLINIE_AB_PIXEL) {
+        this.zeile(links - linie * m, rechts + linie * m, y, f.MITTELLINIE, true);
       }
     }
+  },
+
+  // Wo zwischen fernem (0) und nahem Ende (1) eines Stücks liegt die
+  // Bildhöhe y? Begrenzt, weil bei ganz flachen Stücken sonst Unsinn herauskommt.
+  anteilBei(nah, fern, y) {
+    const hoehe = nah.y - fern.y;
+    return hoehe > 1e-6 ? Math.min(Math.max((y - fern.y) / hoehe, 0), 1) : 0;
+  },
+
+  // Strassenmitte (x im Bild) eines Stücks auf der Bildhöhe y
+  mitteBei(nah, fern, y) {
+    return fern.x + (nah.x - fern.x) * this.anteilBei(nah, fern, y);
+  },
+
+  // Einen Teil eines Stücks in eine schon gezeichnete Bildzeile y
+  // nachtragen, wenn die Strassenmitte dort von x1 bis x2 läuft. Nur der
+  // Asphalt, ohne Gras (das Gras der Zeile ist schon da und würde sonst die
+  // Strasse daneben übermalen). Das Bankett lassen wir weg: So weit hinten
+  // ist es schmaler als ein Pixel und gäbe nur braune Sprenkel im Asphalt.
+  asphaltNachtragen(stueck, x1, x2, m, y) {
+    const f = CONFIG.FARBEN;
+    const strasse = CONFIG.STRASSE_HALBE_BREITE;
+    this.zeile(x1 - strasse * m, x2 + strasse * m, y, stueck.hell ? f.ASPHALT_HELL : f.ASPHALT_DUNKEL);
   },
 
   // Eine waagrechte Linie auf ganze Pixel gerundet.
