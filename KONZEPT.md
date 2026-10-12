@@ -61,8 +61,9 @@ Am Anfang gibt es nur ein Platzhalter-Auto aus einfachen Formen. Richtige Autos 
 ## Meilensteine
 1. Gerade Strasse, Platzhalter-Auto, Gas/Bremse/Lenken, Tempoanzeige.
 2. Kurven und Hügel.
-3. Untergründe (Asphalt/Schotter/Schlamm), Zeit, Checkpoints, Beifahrer.
-4. Seitliche Objekte (Bäume, Schilder, Felsen) und Kollisionen.
+2.5. Kurven-Physik (Grenztempo, Untersteuern) und neue, dichtere Teststrecke mit sichtbaren Hügeln.
+3. Landschaft: Bäume, Büsche, Felsen, Leitplanken, Wegweiser, Waldkulisse im Hintergrund – dicht wie bei V-Rally 3.
+4. Untergründe (Asphalt/Schotter/Schlamm), Zeit, Checkpoints, Beifahrer.
 5. Berg-Hintergrund, Tageszeiten, schöne Alpen-Optik.
 6. Menü, Autoauswahl, richtige Auto-Sprites.
 7. Sound und Musik.

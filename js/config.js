@@ -37,8 +37,9 @@ const CONFIG = {
   // damit schon auf 40 m Entfernung um mehr als eine halbe Bildbreite zur Seite.
   KURVEN_OPTIK: 20,
   // Höhen im Bild verstärken (nur Optik, nicht fürs Fahren). 1 = echte Höhe.
-  // Mit 2.5 sieht eine 12-m-Kuppe aus wie eine 30-m-Kuppe: Die Strasse dahinter
-  // verschwindet deutlich, und Gefälle sieht man klar. Zu gross = wirkt wie Achterbahn.
+  // Mit 1.6 sieht eine 12-m-Kuppe aus wie eine 19-m-Kuppe: Die Strasse dahinter
+  // verschwindet deutlich, und Gefälle sieht man klar. Zu gross (ab ca. 2) = vor
+  // steilen Anstiegen steht eine grüne Wand, die die Berge verdeckt.
   HOEHEN_OPTIK: 1.6,
   // Horizont und Berge kippen leicht mit der Steigung der Strasse vor dem Auto:
   // bergauf rutscht der Horizont nach unten (man "schaut hinauf"), bergab nach oben.
